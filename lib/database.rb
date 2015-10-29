@@ -100,6 +100,17 @@ class Database
 		}
 	end
 
+	def get_service(device, service)
+		EM.defer_to_thread {
+			result = @session.execute(@st[:states_by_device], arguments: [device])
+			result.to_a.select{ |x| x['service'] == service }.first
+		}
+		
+	end
+
+	def get_history(device, service)
+	end
+
 	def delete_device(device)
 		$log.debug "[CASSANDRA] Delete #{device}"
 

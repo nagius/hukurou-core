@@ -84,6 +84,13 @@ class Api < Sinatra::Base
 		}
 	end
 
+	# Get check results for specific device, with history
+	aget '/state/:device/:service' do |device, service|
+		@db.get_service(device, service).callback { |result|
+			body json result
+		}
+	end
+
 	aget '/path*' do
 		# Get the path as list of directory
 		path = params['splat'][0].split('/').reject(&:empty?)
