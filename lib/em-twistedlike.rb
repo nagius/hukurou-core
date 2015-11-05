@@ -37,6 +37,7 @@ module EventMachine
 		end
 
 		def add_callbacks(success, error)
+			# TODO: handle return of an exception
 			if @deferred_status.nil? or @deferred_status == :unknown
 				callback {
 					begin
@@ -76,6 +77,8 @@ module EventMachine
 	end
 
 	class DefaultDeferrable
+		include Deferrable
+
 		def self.failed(*args)
 			d = new
 			d.fail(*args)
@@ -89,6 +92,7 @@ module EventMachine
 		end
 	end
 
+	# See https://twistedmatrix.com/documents/current/api/twisted.internet.defer.DeferredList.html
 	class DeferrableList
 		include Deferrable
 
@@ -99,15 +103,19 @@ module EventMachine
 			if @results_count == 0
 				succeed([]) # Fire immediately if no deferrable provided
 			else
-				# TODO: manage error handling
-				deferrables.each { |deferrable| 
-					deferrable.add_callback { |result|
-						@results << result
-						@results_count -= 1
+				deferrables.each_with_index { |deferrable, index| 
+					deferrable.add_callbacks( proc { |result|
+						@results[index] = [true, result]
+						result
+					}, proc { |reason|
+						@results[index] = [false, reason]
+						reason
+					})
 
-						if @results_count <= 0
-							succeed(@results)
-						end
+					deferrable.add_both { |result|
+						@results_count -= 1  
+						succeed(@results) if @results_count <= 0
+						result
 					}
 				}
 			end

@@ -121,6 +121,12 @@ class Api < Sinatra::Base
 			
 			d=EM::DeferrableList.new(dl)
 			d.add_callback { |result|
+				# Reject failed results
+				result.select!{ |x| x[0] }
+
+				# Discard result status and keep the value
+				result.map!{ |x| x[1] }
+
 				# Flatten the list of hashes into a single hash (empty hash if no result}
 				hash = result.inject(:merge) || {}
 				body json hash
