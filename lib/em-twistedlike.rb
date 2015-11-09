@@ -87,15 +87,15 @@ module EventMachine
 	class DefaultDeferrable
 		include Deferrable
 
-		def self.failed(*args)
+		def self.failed(args)
 			d = new
-			d.fail(*args)
+			d.tfail(args)
 			return d
 		end
 	
-		def self.succeeded(*args)
+		def self.succeeded(args)
 			d = new
-			d.succeed(*args)
+			d.succeed(args)
 			return d
 		end
 	end
