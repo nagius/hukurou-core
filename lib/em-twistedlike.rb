@@ -37,33 +37,41 @@ module EventMachine
 		end
 
 		def add_callbacks(success, error)
-			# TODO: handle return of an exception
-			if @deferred_status.nil? or @deferred_status == :unknown
-				callback {
-					begin
-						@errbacks.pop unless @errbacks.nil?
-						succeed(success.call(*@deferred_args))
-					rescue StandardError => e
-						fail(e)
-					end
-				}
-				errback {
-					begin
-						@callbacks.pop unless @callbacks.nil?
-						succeed(error.call(*@deferred_args))
-					rescue StandardError => e
-						fail(e)
-					end
-				}
-			else
-				# Run the corresponding block immediately if the Defer has already been fired
-				block = @deferred_status == :succeeded ? success : error
+			def call(block)
 				begin
-					succeed(block.call(*@deferred_args))
+					result = block.call(*@deferred_args)
+					if result.kind_of? Exception
+						fail(result)
+					else
+						succeed(result)
+					end
 				rescue StandardError => e
 					fail(e)
 				end
 			end
+
+			if @deferred_status.nil? or @deferred_status == :unknown
+				callback {
+					@errbacks.pop unless @errbacks.nil?
+					call(success)
+				}
+				errback {
+					@callbacks.pop unless @callbacks.nil?
+					call(error)
+				}
+			else
+				# Run the corresponding block immediately if the Defer has already been fired
+				call(@deferred_status == :succeeded ? success : error)
+			end
+		end
+		
+		# Trigger the errback chain with wrapping the arg in an Exception if not one
+		# Named tfail() "twisted-fail" to not interfere with other libraries
+		def tfail reason
+			if not reason.kind_of? Exception
+				reason = RuntimeError.new(reason)
+			end
+			fail(reason)
 		end
 
 		def maybe_deferred
