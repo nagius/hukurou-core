@@ -144,7 +144,7 @@ class Workers
 			[state, output]
 		}
 		d.add_callback { |result|
-			d1=@db.save_state(device, service, result[0], result[1], $CFG[:dc])
+			d1=@db.save_state(device, service, result[0], result[1])
 			d1.add_errback { |e|
 				$log.error "[WORKERS] #{e}"
 			}
@@ -152,7 +152,7 @@ class Workers
 		}
 		d.add_errback { |e|
 			message = "Failed to run #{command}: #{e}"
-			d1=@db.save_state(device, service, Database::ST_ERR, message, $CFG[:dc])
+			d1=@db.save_state(device, service, Database::ST_ERR, message)
 			d1.add_errback { |e|
 				$log.error "[WORKERS] #{e}"
 			}
