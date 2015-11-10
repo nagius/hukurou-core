@@ -1,4 +1,8 @@
 source 'https://rubygems.org'
+gem 'eventmachine'
+gem 'activesupport'
+gem 'em-twistedlike', :github => 'nagius/em-twistedlike'
+gem 'tree'
 gem 'thin'
 gem 'sinatra'
 gem 'sinatra-contrib'
