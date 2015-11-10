@@ -152,7 +152,7 @@ class Workers
 		}
 		d.add_errback { |e|
 			message = "Failed to run #{command}: #{e}"
-			@db.save_state(device, service, Database::ST_ERR, message, $CFG[:dc])
+			d1=@db.save_state(device, service, Database::ST_ERR, message, $CFG[:dc])
 			d1.add_errback { |e|
 				$log.error "[WORKERS] #{e}"
 			}
