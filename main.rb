@@ -117,9 +117,9 @@ def start()
 		d.add_callback { |devices|
 			assets.expand_tree(devices)
 		}
-		d.add_errback { |reason|
-			$log.error "[CORE] Failed to get list of devices: #{reason}"
-			reason.backtrace.each { |trace|
+		d.add_errback { |failure|
+			$log.error "[CORE] Failed to get list of devices: #{failure}"
+			failure.backtrace.each { |trace|
 				$log.debug "\t #{trace}"
 			}
 			EM.stop
@@ -164,9 +164,9 @@ def start()
 					d.add_callback { |devices|
 						assets.expand_tree(devices)
 					}
-					d.add_errback { |reason|
-						$log.error "[CORE] Failed to get list of devices: #{reason}"
-						reason.backtrace.each { |trace|
+					d.add_errback { |failure|
+						$log.error "[CORE] Failed to get list of devices: #{failure}"
+						failure.backtrace.each { |trace|
 							$log.debug "\t #{trace}"
 						}
 						EM.stop
@@ -174,9 +174,9 @@ def start()
 				}
 			}
 		}
-		d.add_errback { |reason|
-			$log.error "[CORE] Failed to join cluster: #{reason}"
-			reason.backtrace.each { |trace|
+		d.add_errback { |failure|
+			$log.error "[CORE] Failed to join cluster: #{failure}"
+			failure.backtrace.each { |trace|
 				$log.debug "\t #{trace}"
 			}
 			EM.stop
