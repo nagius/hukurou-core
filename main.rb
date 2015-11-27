@@ -64,25 +64,6 @@ def load_config
     $CFG.deep_merge!(options)
 
 	# Check mandatory options
-	if not $CFG.has_key?(:dc)
-		abort "Missing parameter :dc in config file"
-	end
-
-	if not $CFG.has_key?(:database)
-		abort "Missing parameter :dc in config file"
-	else
-		if not $CFG[:database].has_key?(:keyspace)
-			abort "Missing parameter database::keyspace in config file"
-		end
-		if not $CFG[:database].has_key?(:hosts)
-			abort "Missing parameter database::hosts in config file"
-		else
-			if $CFG[:database][:hosts].class != Array
-				abort "Parameter database::hosts must be an array of IP"
-			end
-		end
-	end
-
 	if not $CFG.has_key?(:shared_secret)
 		abort "Missing parameter :shared_secret in config file"
 	end

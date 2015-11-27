@@ -4,11 +4,10 @@
     :listen: "0.0.0.0"
 :core:
     :iface: "eth0"
-:dc: "DUB"
+
 :database:
-    :keyspace: test
-    :hosts: 
-        - "10.110.2.12"
+    :host: "127.0.0.1"
+
 :assets: "../../config/assets"
 :services: "../../config/services.yml"
 :shared_secret: "mysupersecret"
