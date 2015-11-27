@@ -170,7 +170,7 @@ class Api < Sinatra::Base
 			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
 		end
 
-		d=@db.save_state(device, service, params['state'], params['message'])
+		d=@db.set_state(device, service, params['state'], params['message'])
 		d.callback { |is_new| 
 			@network.device_added(device) if is_new
 			ahalt 201, "State saved"
