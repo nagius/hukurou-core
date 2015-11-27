@@ -1,5 +1,3 @@
-#!/usr/bin/env ruby
-
 # TODO: document datamodel
 # TODO: YARD documentation
 
@@ -27,6 +25,8 @@ class Database
 	end
 
 	def set_state(device, service, state, message)
+		EM.defer_to_thread {
+
 		# NOTE: service can be a symbol
 
         $log.debug "[REDIS] Saving state #{[device, service, state, message]}"
@@ -69,9 +69,13 @@ class Database
 		end
 			
 		@redis.zadd("last_seens", now, "#{device}:#{service}")
+
+		}
 	end
 
 	def set_stale_state(device, service)
+		EM.defer_to_thread {
+
 		key_state = "state:#{device}:#{service}"
 
 		if @redis.hget(key_state, :state) != State::STALE
@@ -80,9 +84,13 @@ class Database
 			cancel_ack(key_state)
 			state_changed(key_state)
 		end
+
+		}
 	end
 
 	def get_state(device, service)
+		EM.defer_to_thread {
+
 		key_state = "state:#{device}:#{service}"
 
 		state = @redis.mapped_hmget(key_state, :state, :message, :last_seen, :starts_at, :ack_id, :mute_id)
@@ -103,16 +111,22 @@ class Database
 		end
 
 		state
+
+		}
 	end
 
 	def get_devices()
+		EM.defer_to_thread {
 		@redis.smembers("devices")
+		}
 	end
 
 	def get_states()
+		EM.defer_to_thread {
 		@redis.scan_each(:match => "state:*").map { |key|
 			device, service = key.split(":")[1,2]
 			{ :device => device, :service => service }
+		}
 		}
 	end
 
@@ -137,6 +151,8 @@ class Database
 	end
 
 	def ack_state(device, service, message, user)
+		EM.defer_to_thread {
+
 		key_state = "state:#{device}:#{service}"
 
 		if @redis.hget(key_state, :ack_id).nil? # Do nothing if already acked
@@ -158,9 +174,13 @@ class Database
 		else
 			nil	# Return nil if nothing done
 		end
+
+		}
 	end
 
 	def set_mute(devices, services, message, user, starts_at, ends_at)
+		EM.defer_to_thread {
+
 		$log.debug("[REDIS] Added mute: #{devices}:#{services} by #{user} from #{starts_at} to #{ends_at}")
 		# TODO: store exact list or wildcard ??
 
@@ -196,15 +216,21 @@ class Database
 		
 		# Return the Id of created mute record
 		id
+
+		}
 	end
 
 	def get_mutes()
+		EM.defer_to_thread { 
+
 		mutes = []
 		@redis.scan_each(:match => "mute:*:obj") { |key|
 			mutes << get_mute(key)
 		}
 
 		mutes
+
+		}
 	end
 
 	def get_mute(key)
