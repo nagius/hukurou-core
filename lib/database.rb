@@ -1,151 +1,300 @@
 #!/usr/bin/env ruby
 
-require 'eventmachine'
-require 'cassandra'
+# TODO: document datamodel
+# TODO: YARD documentation
 
-# TODO: add check for DC and state fields
-# TODO: better error management
-# TODO: check error handling when db is down
+# TODO: add history on pub/sub change state ?
+
+require "redis"
+require "hiredis"
+require "json"
 
 class Database
-
-	ST_OK = "green"
-	ST_WARN = "yellow"
-	ST_ERR = "red"
-
-	def initialize
-		# Open connection to Cassandra
-		# TODO: check failover policie
-		@cluster = Cassandra.cluster(
-			hosts: $CFG[:database][:hosts],
-			retry_policy: Cassandra::Retry::Policies::Default.new,
-		)
-
-		@session = @cluster.connect($CFG[:database][:keyspace])
-	
-		# Prepare all statements
-		@st=Hash.new
-		@st[:all_states] = @session.prepare("select device from states")
-		@st[:states_by_service] = @session.prepare("SELECT state from states where device = ? and service = ?")
-		@st[:insert_state] = @session.prepare("INSERT INTO states (device, service, state, message, starts_at, last_seen, acked, disabled) VALUES (?, ?, ?, ?, toTimestamp(now()), toTimestamp(now()), False, False)")
-		@st[:insert_dc] = @session.prepare("INSERT INTO devices_by_dc (device, dc) VALUES (?, ?)")
-		@st[:insert_history] = @session.prepare("INSERT INTO history (uuid, device, service, state, message) VALUES (now(), ?, ?, ?, ?)")
-		@st[:update_same_state] = @session.prepare("UPDATE states SET message = ?, last_seen=toTimestamp(now()) WHERE device = ? and service = ?")
-		@st[:update_change_state] = @session.prepare("UPDATE states SET state = ?, message = ?, starts_at=toTimestamp(now()), last_seen=toTimestamp(now()), acked=False WHERE device = ? and service = ?")
-		@st[:ack_state] = @session.prepare("UPDATE states SET acked = True, ack_message = ?, ack_user = ? WHERE device = ? and service = ?")
-		@st[:devices_by_dc] = @session.prepare("select device from devices_by_dc where dc = ?")
-		@st[:states_by_device] = @session.prepare("select * from states where device = ?")
-		@st[:delete_state] = @session.prepare("delete from states where device = ?")
-		@st[:delete_device] = @session.prepare("delete from devices_by_dc where device = ? and dc = ?")
-		@st[:update_maintenance_state] = @session.prepare("UPDATE states SET disabled = ? WHERE device = ? and service = ?")
+	class State
+		OK = "OK"
+		ERR = "ERROR"
+		WARN = "WARN"
+		STALE = "STALE"
 	end
 
-	def get_all_devices()
-		# Using defer and synchonous call because Cassandra's async doesn't work well with Eventmachine
-		EM.defer_to_thread {
-			result = @session.execute(@st[:all_states])
-			result.map { |x| x['device'] }
+	def initialize()
+		@redis = Redis.new($CFG[:database])
+
+		# Check mimium version (needed for *scan features)
+		if @redis.info["redis_version"] < "2.8.0"
+			abort "Redis version must be >= 2.8.0"
+		end
+	end
+
+	def set_state(device, service, state, message)
+		# NOTE: service can be a symbol
+
+        $log.debug "[REDIS] Saving state #{[device, service, state, message]}"
+
+		now = Time.now.to_i
+
+		# Data for state:<device>:<service>
+		key_state = "state:#{device}:#{service}"
+		data = {
+			:state => state,
+			:message => message,
+			:last_seen => now,
+			:starts_at => now,
+			:event => false
 		}
-	end
 
-	def save_state(device, service, state, message)
-		# Convert to string 'cause it can also be a symbol
-		service = service.to_s
-		$log.debug "[CASSANDRA] Saving state #{[device, service, state, message, $CFG[:dc]]}"
-
-		EM.defer_to_thread {
-			is_new=false # Flag to detect new device
-
-			# Get current state
-			res=@session.execute(@st[:states_by_service] , arguments: [device, service])
-			if res.empty?
-				# New device
-				is_new=true
-				@session.execute(@st[:insert_state], arguments: [device, service, state, message])
-				@session.execute(@st[:insert_dc], arguments: [device, $CFG[:dc]])
-				@session.execute(@st[:insert_history], arguments: [device, service, state, message]) # TODO: set TTL
-				
-			elsif res.first['state'] == state
-				# Same state
-				@session.execute(@st[:update_same_state], arguments: [message, device, service])
-			else	
-				# State change
-				@session.execute(@st[:update_change_state], arguments: [state, message, device, service])
-				@session.execute(@st[:insert_history], arguments: [device, service, state, message]) # TODO: set TTL
+		if not @redis.sismember("devices", device)
+			# New device
+			@redis.pipelined do
+				@redis.mapped_hmset(key_state, data)
+				@redis.sadd("devices", device)
+				# TODO: add history
 			end
-				
-			is_new
-		}
+			# TODO: pub/sub new device
+			$log.debug("[REDIS] New device detected: #{device}")
+		else
+			if @redis.hget(key_state, :state) == state
+				# Same state
+				@redis.hmset(key_state, :message, message, :last_seen, now)
+			else
+				# State change
+				@redis.mapped_hmset(key_state, data)
+
+				# Cancel acknowledge
+				cancel_ack(key_state)
+
+				state_changed(key_state)
+				# TODO: add history
+			end
+		end
+			
+		@redis.zadd("last_seens", now, "#{device}:#{service}")
 	end
 
-	def ack_state(device, service, message, user)
-		$log.debug "[CASSANDRA] Ack #{device}, #{service}, #{message}, #{user}"
-		EM.defer_to_thread {
-			@session.execute(@st[:ack_state], arguments: [message, user, device, service])
-		}
+	def set_stale_state(device, service)
+		key_state = "state:#{device}:#{service}"
+
+		if @redis.hget(key_state, :state) != State::STALE
+			$log.debug "[REDIS] State flagged as stale: #{device}:#{service}"
+			@redis.hmset(key_state, :state, State::STALE, :starts_at, Time.now.to_i)
+			cancel_ack(key_state)
+			state_changed(key_state)
+		end
+	end
+
+	def get_state(device, service)
+		key_state = "state:#{device}:#{service}"
+
+		state = @redis.mapped_hmget(key_state, :state, :message, :last_seen, :starts_at, :ack_id, :mute_id)
+
+		# Convert timestame to Time
+		state[:last_seen] = Time.at(state[:last_seen].to_i)
+		state[:starts_at] = Time.at(state[:starts_at].to_i)
+
+		# Add ack infos
+		if not state[:ack_id].nil?
+			state[:ack] = @redis.mapped_hmget("ack:#{state[:ack_id]}", :message, :user, :created_at)
+			state[:ack][:created_at] = Time.at(state[:ack][:created_at].to_i)
+		end
+
+		# Add mute infos
+		if not state[:mute_id].nil?
+			state[:mute] = get_mute(state[:mute_id])
+		end
+
+		state
 	end
 
 	def get_devices()
-		# Use EM defer instead of Cassandra's async to return list instead of Cassandra::Result
-		EM.defer_to_thread {
-			result = @session.execute(@st[:devices_by_dc], arguments: [$CFG[:dc]])
-			result.map { |x| x['device'] }
-		}
-	end
-	
-	def get_state(device)
-		EM.defer_to_thread {
-			result = @session.execute(@st[:states_by_device], arguments: [device])
-			result.to_a
-		}
+		@redis.smembers("devices")
 	end
 
-	def get_service(device, service)
-		EM.defer_to_thread {
-			result = @session.execute(@st[:states_by_device], arguments: [device])
-			result.to_a.select{ |x| x['service'] == service }.first
+	def get_states()
+		@redis.scan_each(:match => "state:*").map { |key|
+			device, service = key.split(":")[1,2]
+			{ :device => device, :service => service }
 		}
-		
-	end
-
-	def get_history(device, service)
 	end
 
 	def delete_device(device)
-		$log.debug "[CASSANDRA] Delete #{device}"
+		$log.debug("[REDIS] Delete device: #{device}")
 
-		# Do not delete history, will use TTL
-		d=EM.defer_to_thread {
-			@session.execute(@st[:delete_state], arguments: [device])
-			@session.execute(@st[:delete_device], arguments: [device, $CFG[:dc]])
-		}
-		d.errback { |e|
-			$log.error "[CASSANDRA] Failed to delete device: #{e}"
-		}
-		return d # TODO: factorise
-	end
+		@redis.srem("devices", device)
 
-	def add_maintenance(device, service, starts_at, ends_at, message, user)
-		$log.debug "[CASSANDRA] New maintenance #{device}, #{service}, #{starts_at}, #{ends_at}, #{message}, #{user}"
-		# FIXME: This is a bug in Cassandra driver with timestamp and prepared statement. Try with Cassandra::Types::Timestamp ??
-		#   add = session.prepare("insert into maintenances (uuid, device, service, starts_at, ends_at, message, user) VALUES (now(), ?, ?, ?, ?, ?, ?)")
-		#   session.execute(add, arguments: [device, service, '2015-07-30 11:11:05+0000', '2015-07-30 11:11:05+0000', message, user])
-		EM.defer_to_thread {
-			@session.execute("insert into maintenances (uuid, device, service, starts_at, ends_at, message, user) VALUES (now(), '#{device}', '#{service}', '#{starts_at}', '#{ends_at}', '#{message}', '#{user}')")
+		# WARNING: *scan do not work inside a pipeline or a multi
+		@redis.scan_each(:match => "state:#{device}:*") { |key_state|
+			delete_state_by_key(key_state)
+		}
+
+		@redis.zscan_each("last_seens", :match => "#{device}:*") { |key|
+			@redis.zrem("last_seens", key[0])
 		}
 	end
 
-	def apply_maintenance(device, service, starts_at, ends_at)
-		now = Time.now()
-		starts = Time.parse(starts_at)
-		ends = Time.parse(ends_at)
+	def delete_state(device, service)
+		$log.debug("[REDIS] Delete state: #{device}:#{service}")
+		delete_state_by_key("state:#{device}:#{service}")
+	end
 
-		$log.debug "[CASSANDRA] Apply maintenance #{[device, service, starts_at, ends_at]}"
+	def ack_state(device, service, message, user)
+		key_state = "state:#{device}:#{service}"
 
-		EM.defer_to_thread {
-			@session.execute(@st[:update_maintenance_state], arguments: [(starts < now and now < ends), device, service])
+		if @redis.hget(key_state, :ack_id).nil? # Do nothing if already acked
+			$log.debug("[REDIS] Acknowledge state: #{device}:#{service}")
+			id = @redis.incr("next_ack_id")
+
+			ack = {
+				:id => id,
+				:message => message,
+				:user => user,
+				:state => key_state,
+				:created_at => Time.now.to_i
+			}
+
+			@redis.mapped_hmset("ack:#{id}", ack)
+			@redis.hset(key_state, :ack_id, id)
+
+			id	# Return the id of the created ack record
+		else
+			nil	# Return nil if nothing done
+		end
+	end
+
+	def set_mute(devices, services, message, user, starts_at, ends_at)
+		$log.debug("[REDIS] Added mute: #{devices}:#{services} by #{user} from #{starts_at} to #{ends_at}")
+		# TODO: store exact list or wildcard ??
+
+		id = @redis.incr("next_mute_id")
+		mute = {
+			:id => id,
+			:devices => devices.to_json,
+			:services => services.to_json,
+			:message => message,
+			:user => user,
+			:starts_at => starts_at.to_i,
+			:ends_at => ends_at.to_i
+		}
+
+		@redis.mapped_hmset("mute:#{id}:obj", mute)
+
+		# Mute all existing specified states
+		devices.each { |device|
+			services.each { |service|
+				key_state = "state:#{device}:#{service}"
+				if @redis.exists(key_state)
+					already_muted = @redis.hexists(key_state, :mute_id)
+
+					@redis.sadd("mute:#{id}:states", key_state)
+					@redis.hset(key_state, :mute_id, id)
+
+					# Only trigger state changed if it wasn't already muted
+					state_changed(key_state) unless already_muted
+					# TODO: add history
+				end
+			}
+		}
+		
+		# Return the Id of created mute record
+		id
+	end
+
+	def get_mutes()
+		mutes = []
+		@redis.scan_each(:match => "mute:*:obj") { |key|
+			mutes << get_mute(key)
+		}
+
+		mutes
+	end
+
+	def get_mute(key)
+		# Convert to key if Id given
+		key = "mute:#{key}:obj" unless key.to_s.include? ":"
+
+		if @redis.exists(key)
+			mute = @redis.mapped_hmget(key, :id, :devices, :services, :message, :user, :starts_at, :ends_at)
+
+			# Parse JSON sub-elements
+			mute[:devices] = JSON.parse(mute[:devices])
+			mute[:services] = JSON.parse(mute[:services])
+
+			# Convert timestame to Time
+			mute[:starts_at] = Time.at(mute[:starts_at].to_i)
+			mute[:ends_at] = Time.at(mute[:ends_at].to_i)
+
+			mute
+		else
+			nil
+		end
+	end
+
+	def delete_mute(id)
+		$log.debug("[REDIS] Mute ##{id} deleted")
+
+		# Get impacted states by this mute
+		muted_states = @redis.smembers("mute:#{id}:states").to_a
+
+		# Delete mute objects
+		@redis.del("mute:#{id}:states")
+		@redis.del("mute:#{id}:obj")
+
+		# Get list of all states concerned by another mute
+		# If multiple mute for one state, just keep one (not sorted)
+		all_muted_states = {} 
+		@redis.scan_each(:match => "mute:*:states") { |key|
+			id = key.split(":")[1]
+			@redis.smembers(key).each { |key_state| 
+				all_muted_states[key_state] = id
+			}
+		}
+
+		# Chech if impacted states are also concerned by another mute
+		muted_states.each { |key_state|
+			if all_muted_states[key_state].nil?
+				# No others mute, unmute this state
+				@redis.hdel(key_state, :mute_id)
+				state_changed(key_state)
+			else
+				# Update mute reference to the previous one
+				@redis.hset(key_state, :mute_id, all_muted_states[key_state])
+			end
 		}
 	end
+
+	private
+
+		def state_changed(key_state)
+			# TODO: pub/sub change state
+			$log.debug("[REDIS] State change for #{key_state}")
+		end
+
+		def cancel_ack(key_state)
+			ack_id = @redis.hget(key_state, :ack_id)
+			if not ack_id.nil?
+				$log.debug("[REDIS] Acknowledge ##{ack_id} cancelled for #{key_state}")
+				@redis.hdel(key_state, :ack_id)	
+				@redis.del("ack:#{ack_id}")
+			end
+		end
+
+		def delete_state_by_key(key_state)
+			# Delete acknowledge
+			ack_id = @redis.hget(key_state, :ack_id)
+			@redis.del("ack:#{ack_id}") unless ack_id.nil?
+
+			# Delete state from mute list
+			mute_id = @redis.hget(key_state, :mute_id)
+			if not mute_id.nil?
+				@redis.srem("mute:#{mute_id}:states", key_state)
+
+				# Delete mute if not used anymore
+				if @redis.scard("mute:#{mute_id}:states") == 0
+					delete_mute(mute_id)
+				end
+			end
+			
+			@redis.del(key_state)
+		end
 end
 
 # vim: ts=4:sw=4:ai:noet
