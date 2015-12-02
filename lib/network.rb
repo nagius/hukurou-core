@@ -37,6 +37,9 @@ class Network
 		async.join_cluster
 	end
 
+	def shutdown
+		leave_cluster
+	end
 
 	def listen()
 		while @socket
@@ -164,6 +167,7 @@ class Network
 	end
 
 	def leave_cluster()
+		info "[NET] Leaving cluster."
 		stop_watchdog()
 		stop_heartbeat()
 		broadcast(Message::Leave.new)

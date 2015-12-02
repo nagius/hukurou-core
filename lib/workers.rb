@@ -9,12 +9,17 @@ require 'celluloid/current'
 class Workers
 	include Celluloid
 	include Celluloid::Internals::Logger
+	finalizer :shutdown
 
 	def initialize()
 		@me = Socket.gethostname
 		@nodes = Hash.new				# Hash of node containing list of device managed by the node
 		@workers = Hash.new				# Hash of device containing list of Timer for each check
 		@pool = Worker.pool(size: 20) 	# Pool of thread to execute checks
+	end
+
+	def shutdown()
+		stop_all_workers
 	end
 
 	def dispatch(device)

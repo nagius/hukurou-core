@@ -11,6 +11,7 @@ require "json"
 class Database
     include Celluloid
 	include Celluloid::Internals::Logger
+	finalizer :shutdown
 
 	class State
 		OK = "OK"
@@ -26,6 +27,10 @@ class Database
 		if @redis.info["redis_version"] < "2.8.0"
 			abort "Redis version must be >= 2.8.0"
 		end
+	end
+
+	def shutdown()
+		@redis.quit
 	end
 
 	def set_state(device, service, state, message)

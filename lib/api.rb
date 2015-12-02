@@ -141,10 +141,21 @@ end
 
 class API
 	include Celluloid
+	include Celluloid::Internals::Logger
+	finalizer :shutdown
+
+	def initialize
+		Router.log_level ::Logger::DEBUG if $CELLULOID_DEBUG
+	end
+
+	def shutdown
+		info "[API] Stopping web server."
+		@server.async.shutdown unless @server.nil?
+	end
 
 	def start
-		Router.log_level ::Logger::DEBUG if $CELLULOID_DEBUG
-		Router.run
+		info "[API] Starting web server."
+		@server = Router.run
 	end
 end
 

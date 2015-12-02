@@ -176,12 +176,10 @@ class Supervisor <  Celluloid::Supervision::Container
   supervise type: API,	 	as: :api
 end
 
-# TODO: trap INT TERM shutdown
 # TODO: trap HUP assets.reload
 
 # Start main loop
 Celluloid.logger.info "[CORE] Starting application..."
 Supervisor.run
-
 
 # vim: ts=4:sw=4:ai:noet
