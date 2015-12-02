@@ -1,54 +1,60 @@
 #!/usr/bin/env ruby
 
 
-require 'eventmachine'
 require 'socket'
+require 'celluloid/current'
+require 'celluloid/io'
 require_relative 'messages'
 
 
-# TODO: set IP TOS field to Minimize-Delay
-class NetworkHandler < EM::Connection
-	def initialize
-		super
-		
-		# Auto-detect IP of interface
-		@iface = Socket.getifaddrs.detect{ |iface| iface.name == $CFG[:core][:iface] and iface.addr.ipv4? }
-	
-		raise "Couldn't find interface: #{$CFG[:core][:iface]}" if @iface.nil?
+module Celluloid
+	module IO
+		class UDPSocket
+			# Forward setsockopt to allow broadcast packet
+			def_delegators :@socket, :setsockopt
+		end
+	end
+end
 
+
+# TODO: set IP TOS field to Minimize-Delay
+# TODO: rename intercom ? NetworkCluster ?
+class Network
+	include Celluloid::IO
+	include Celluloid::Internals::Logger
+	finalizer :shutdown
+	
+	def initialize
 		@hb = Message::Heartbeat.new	# Generate the heartbeat message only once
 		@me = Socket.gethostname		# My name
 		@status={}						# List of remote nodes with timestamps
-		@node_callbacks=[]  			# List of callback to fire when a cluster change occurs (node added or removed)
-		@device_callbacks=[]  			# List of callback to fire when a device is added or removed
+
+		@socket = Celluloid::IO::UDPSocket.new
+		@socket.bind("0.0.0.0", 6666)
+		@socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)
+
+		async.listen
+		async.join_cluster
 	end
 
-	def self.get_instance()
-		# FIXME: debug this to change to @iface.addr.ip_address
-		EM::open_datagram_socket("0.0.0.0", $CFG[:core][:port], NetworkHandler)
+
+	def listen()
+		while @socket
+			data, (_, port, _, ip) = @socket.recvfrom(1400) # TODO: check if good number
+			debug "[NET] Msg received form #{ip}:#{port} - #{data}"
+			async.process_data(data, ip, port)
+		end
+	rescue EOFError => e
+		error "[NET] Socket error: #{e}"
 	end
 
-	# Register callback
-	def on_node_change(&block)
-		@node_callbacks << block
-	end
-
-	def on_device_change(&block)
-		@device_callbacks << block
-	end
-
-	def receive_data(data)
-		# Get remote infos
-		port, ip = Socket.unpack_sockaddr_in(get_peername())
-		
-		# Discard own messages
-		return if ip == @iface.addr.ip_address
-
-		$log.debug "[NET] Msg received form #{ip}:#{port} - #{data}"
-
+	def process_data(data, ip, port)
 		# Parse received message
 		begin
 			msg=Message::get(data, ip)
+
+			# Discard own messages
+			return if msg.src == @me
 
 			# Dispatch message
 			case msg
@@ -56,76 +62,72 @@ class NetworkHandler < EM::Connection
 					if @status.keys.include? msg.src
 						@status[msg.src]=Time.now
 					else
-						$log.warn "[NET] Discarding heartbeat from non registered node #{msg.src}"
+						warn "[NET] Discarding heartbeat from non registered node #{msg.src}"
 					end
 				when Message::JoinRequest
 					if msg.token_ok?
-						reply(Message::Granted.new.set_members(get_nodes()))
+						reply(Message::Granted.new.set_members(get_nodes()), ip, port)
 					else
-						$log.warn "[NET] Bad token form #{msg.src}. Refusing this node."
-						reply(Message::Denied.new)
+						warn "[NET] Bad token form #{msg.src}. Refusing this node."
+						reply(Message::Denied.new, ip, port)
 					end
 				when Message::Granted
 					@members[msg.src]=msg.members
 				when Message::Denied
 					@denied=true
 				when Message::Join
-					$log.info "[NET] New node in cluster: #{msg.src}"
+					info "[NET] New node in cluster: #{msg.src}"
 					@status[msg.src]=Time.now
 					notify_node_change()
 				when Message::Leave
-					$log.info "[NET] Node leaving cluster: #{msg.src}"
+					info "[NET] Node leaving cluster: #{msg.src}"
 					remove_node(msg.src)
 				when Message::Eject
 					if msg.host == @me
-						$log.warn "[NET] I've been kicked out by #{msg.src}. Shutting down."
-						EM.stop
+						warn "[NET] I've been kicked out by #{msg.src}. Shutting down."
+						Celluloid.shutdown
 					else
-						$log.info "[NET] Node #{msg.host} rejected by #{msg.src}. Removing from cluster."
+						info "[NET] Node #{msg.host} rejected by #{msg.src}. Removing from cluster."
 						remove_node(msg.host)
 					end
 				when Message::DeviceAdded
-					$log.info "[NET] Device added: #{msg.device}"
+					info "[NET] Device added: #{msg.device}"
 					notify_device_change(msg.device, :add)
 				when Message::DeviceDeleted
-					$log.info "[NET] Device deleted: #{msg.device}"
+					info "[NET] Device deleted: #{msg.device}"
 					notify_device_change(msg.device, :delete)
 				else
-					$log.info "[NET] Unknown message type #{msg.class} from #{ip}"
+					info "[NET] Unknown message type #{msg.class} from #{ip}"
 			end
 		rescue Message::ParseError => e
-			$log.error "[NET] #{e}"
+			error "[NET] #{e}"
 		end
 	end
 
 	def start_heartbeat()
-		@timer_hb=EM::PeriodicTimer.new(1) do
+		@timer_hb=every(1) {
 			broadcast(@hb)
-		end
+		}
 	end
 
 	def stop_heartbeat()
-		if not @timer_hb.nil?
-			@timer_hb.cancel
-		end
+		@timer_hb.cancel unless @timer_hb.nil?
 	end
 
 	def start_watchdog()
-		@timer_wd=EM::PeriodicTimer.new(2) do
+		@timer_wd=every(2) {
 			@status.each_pair { |node, ts|
 				if Time.now - ts > 10
-					$log.warn "[NET] Failure detected for node #{node}. Removing from cluster."
+					warn "[NET] Failure detected for node #{node}. Removing from cluster."
 					broadcast(Message::Eject.new.set_host(node))
-					EM.next_tick { remove_node(node) }
+					async.remove_node(node)
 				end
 			}	
-		end
+		}
 	end
 
 	def stop_watchdog()
-		if not @timer_wd.nil?
-			@timer_wd.cancel
-		end
+		@timer_wd.cancel unless @timer_wd.nil?
 	end
 
 	def join_cluster()
@@ -133,31 +135,32 @@ class NetworkHandler < EM::Connection
 		@denied=false
 
 		broadcast(Message::JoinRequest.new)
-		# TODO: add a retry process
 
-		d=EM::DefaultDeferrable.new
+		# Wait response from others members
+		sleep 2  # This is non blocking for the current thread
 
-		# Check response from others members
-		EM.add_timer(2) {
-			# TODO verify coherence
-			if @denied
-				d.fail("Access denied")
-			else
-				broadcast(Message::Join.new)
+		# TODO verify coherence
+		if @denied
+			info "[NET] Cluster join refused: Access denied"
+			Celluloid.shutdown
+		else
+			broadcast(Message::Join.new)
 
-				# Initialize status for watchdog
-				@members.keys.each { |node|
-					@status[node]=Time.now
-				}
+			# Initialize status for watchdog
+			@members.keys.each { |node|
+				@status[node]=Time.now
+			}
 
-				start_heartbeat()
-				start_watchdog()
-				notify_node_change()
-				d.succeed(@members.keys)
-			end
-		}
+			start_heartbeat()
+			start_watchdog()
+			notify_node_change()
 
-		return d
+			# Return the list of cluster's member (excluding local node)
+			@members.keys
+			info "[NET] Cluster joined with members: #{@members}"
+
+			Celluloid::Actor[:api].async.start
+		end
 	end
 
 	def leave_cluster()
@@ -170,6 +173,7 @@ class NetworkHandler < EM::Connection
 		@status.keys + [@me]
 	end
 
+	# TODO: move this to pub/sub in Redis
 	def device_added(device)
 		broadcast(Message::DeviceAdded.new.set_device(device))
 		notify_device_change(device, :add)		# Also locally notify because our own message are discarded
@@ -184,11 +188,11 @@ class NetworkHandler < EM::Connection
 
 		def broadcast(msg)
 			# TODO assert msg is Message
-			send_datagram(msg.serialize(), @iface.broadaddr.ip_address, $CFG[:core][:port])
+			@socket.send(msg.serialize(), 0, '<broadcast>', 6666)
 		end
 
-		def reply(msg)
-			send_data(msg.serialize())
+		def reply(msg, host, port)
+			@socket.send(msg.serialize(), 0, host, port)
 		end
 
 		def remove_node(node)
@@ -197,15 +201,11 @@ class NetworkHandler < EM::Connection
 		end
 
 		def notify_node_change()
-			EM.next_tick {
-				@node_callbacks.each { |c| c.call(get_nodes()) }
-			}
+			Celluloid::Actor[:workers].rebalance(get_nodes())
 		end
 
 		def notify_device_change(device, action)
-			EM.next_tick {
-				@device_callbacks.each { |c| c.call(device, action) }
-			}
+			puts "device change"
 		end
 
 end

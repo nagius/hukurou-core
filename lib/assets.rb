@@ -10,9 +10,11 @@ require 'tree'
 require 'pathname'
 require 'yaml'
 require 'active_support/all'
-require 'eventmachine'
+require 'celluloid/current'
 
 class Device
+	include Celluloid::Internals::Logger
+
 	attr_reader :path
 
 	def initialize(file, services, default_config = {})
@@ -32,12 +34,12 @@ class Device
 				@config = default_config.gentle_deep_merge(local_config)
 			end
 		rescue StandardError => e
-			$log.warn "[ASSETS] Can't parse YAML file #{file}: #{e}"
+			warn "[ASSETS] Can't parse YAML file #{file}: #{e}"
 		end
 		
 		# Merge global services definition with local config
 		if @config[:services].blank?
-			$log.warn "[ASSETS] Service definition is empty for #{file}"
+			warn "[ASSETS] Service definition is empty for #{file}"
 		else
 			@config[:services].keys.each do |service|
 				# Ensure service configuration is not nil
@@ -50,7 +52,7 @@ class Device
 
 				# Check if service definition is present
 				if @config[:services][service].blank?
-					$log.warn "[ASSETS] Definition of service #{service} is empty for #{file}, discarding..."
+					warn "[ASSETS] Definition of service #{service} is empty for #{file}, discarding..."
 					@config[:services].delete(service)
 					next
 				end
@@ -63,7 +65,7 @@ class Device
 
 				# Check mandatories values
 				if not @config[:services][service].has_key?(:interval) or not @config[:services][service].has_key?(:command)
-					$log.warn "[ASSETS] Definition of service #{service} is incomplete for #{file}, interval or command is missing, discarding..."
+					warn "[ASSETS] Definition of service #{service} is incomplete for #{file}, interval or command is missing, discarding..."
 					@config[:services].delete(service)
 					next
 				end
@@ -76,7 +78,7 @@ class Device
 			begin
 				@regex=Regexp.new(@name)
 			rescue RegexpError => e
-				$log.warn "[ASSETS] Invalid regex #{@name}: #{e}, discarding..."
+				warn "[ASSETS] Invalid regex #{@name}: #{e}, discarding..."
 			end
 		end
 	end
@@ -99,6 +101,9 @@ class Device
 end
 
 class Assets
+	include Celluloid
+	include Celluloid::Internals::Logger
+
 	attr_reader :tree, :expanded_tree
 
 	def initialize()
@@ -122,16 +127,12 @@ class Assets
 	end
 	
 	def reload()
-		$log.info "[ASSETS] Reloading assets..."
-		d=EM.defer_to_thread {
+		info "[ASSETS] Reloading assets..."
+		begin
 			load_assets()
-			self
-		}
-		d.add_errback { |e|
-			$log.error "[ASSETS] Failed to reload assets, system may be in an incoherent state : #{e}"
-		}
-
-		return d
+		rescue StandardError => e
+			error "[ASSETS] Failed to reload assets, system may be in an incoherent state : #{e}"
+		end
 	end
 
 	def create_subtree(path, config = {})
@@ -152,7 +153,7 @@ class Assets
 					# Merge default config with parent's one
 					config = config.gentle_deep_merge(YAML::load_file(file).deep_symbolize_keys)
 				rescue StandardError => e
-					$log.warn "[ASSETS] Can't parse YAML file #{file}: #{e}"
+					warn "[ASSETS] Can't parse YAML file #{file}: #{e}"
 				end
 				true
 			else

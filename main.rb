@@ -1,16 +1,13 @@
 #!/usr/bin/env ruby
 
-require 'eventmachine'
+require 'celluloid/current'
 require 'yaml'
 require 'optparse'
-require 'logger'
-require 'em-twistedlike'
 require_relative 'lib/monkey_patchs'
 require_relative 'lib/network'
 require_relative 'lib/database'
 require_relative 'lib/assets'
 require_relative 'lib/workers'
-require_relative 'lib/logs'
 require_relative 'lib/api'
 
 
@@ -169,20 +166,22 @@ load_config
 
 # Setup logger 
 # Logging to a file and handle rotation is a bad habit. Instead, stream to STDOUT and let the system manage logs.
-$log = Logger.new STDOUT
-$log.formatter = CustomFormatter.new
-$log.level = $CFG[:debug] ? Logger::DEBUG : Logger::INFO
+$CELLULOID_DEBUG = $CFG[:debug]
+
+class Supervisor <  Celluloid::Supervision::Container
+  supervise type: Assets, 	as: :assets
+  supervise type: Database, as: :redis
+  supervise type: Workers,	as: :workers
+  supervise type: Network, 	as: :net
+  supervise type: API,	 	as: :api
+end
+
+# TODO: trap INT TERM shutdown
+# TODO: trap HUP assets.reload
 
 # Start main loop
-begin
-	$log.info "[CORE] Starting application..."
-	start
-rescue StandardError => e
-	if $CFG[:debug]
-		STDERR.puts e.backtrace.join("\n\t")
-	end
-	abort "Failed to start application: #{e}"
-end
+Celluloid.logger.info "[CORE] Starting application..."
+Supervisor.run
 
 
 # vim: ts=4:sw=4:ai:noet

@@ -1,16 +1,20 @@
 
+require 'timeout'
 require 'socket'
-require 'eventmachine'
-require 'pp'
+require 'celluloid/current'
 
+# TODO: put pool size on config
+# TODO: put timeout on config
 
 class Workers
-	def initialize(db, assets)
-		@db = db
-		@assets = assets
+	include Celluloid
+	include Celluloid::Internals::Logger
+
+	def initialize()
 		@me = Socket.gethostname
-		@nodes = Hash.new		# Hash of node containing list of device managed by the node
-		@workers = Hash.new		# Hash of device containing list of Timer for each check
+		@nodes = Hash.new				# Hash of node containing list of device managed by the node
+		@workers = Hash.new				# Hash of device containing list of Timer for each check
+		@pool = Worker.pool(size: 20) 	# Pool of thread to execute checks
 	end
 
 	def dispatch(device)
@@ -25,38 +29,36 @@ class Workers
 
 	def rebalance(nodes)
 		# TODO: check if assets has been loaded
-		$log.info "[WORKERS] Rebalance cluster with #{nodes}"
+		info "[WORKERS] Rebalance cluster with #{nodes}"
 
 		@nodes=Hash.new
 		nodes.each { |node|
 			@nodes[node]=[]
 		}
 
-		d=@db.get_devices()
-		d.callback { |devices|
-			devices.each { |device|
-				@nodes[dispatch(device)] << device
-			}	
-			rebalance_workers()
-		}
-		return d
+		devices = Celluloid::Actor[:redis].get_devices()
+		devices.each { |device|
+			@nodes[dispatch(device)] << device
+		}	
+		rebalance_workers()
 	end
 
 	def start_workers(device)
-		$log.info "[WORKERS] Starting workers for device #{device}..."
+		info "[WORKERS] Starting workers for device #{device}..."
 		@workers[device]=Array.new
 
-		@assets.get_device(device).get_services().each_pair do |service, conf|
+		services = Celluloid::Actor[:assets].get_device(device).get_services()
+		services.each_pair do |service, conf|
 			if conf[:remote]
-				@workers[device] << EM::PeriodicTimer.new(conf[:interval]) do
-					run_check(device, service, conf)
+				@workers[device] << every(conf[:interval]) do
+					@pool.async.run(device, service, conf)
 				end
 			end
 		end
 	end
 
 	def stop_workers(device)
-		$log.info "[WORKERS] Stopping workers for device #{device}..."
+		info "[WORKERS] Stopping workers for device #{device}..."
 		@workers[device].each { |worker|
 			worker.cancel()
 		}
@@ -101,65 +103,66 @@ class Workers
 		devices_removed = @workers.keys - get_local_devices()
 
 		if devices_added.empty? and devices_removed.empty?
-			$log.info "[WORKERS] Nothing to rebalance"
-			return
+			info "[WORKERS] Nothing to rebalance"
+		else
+			# Remove old devices
+			devices_removed.each { |device|
+				stop_workers(device)
+			}
+
+			# Add new devices
+			devices_added.each { |device|
+				start_workers(device)
+			}
 		end
-
-		# Remove old devices
-		devices_removed.each { |device|
-			stop_workers(device)
-		}
-
-		# Add new devices
-		devices_added.each { |device|
-			start_workers(device)
-		}
-
 	end
+end
+
+class Worker
+	include Celluloid
+	include Celluloid::Internals::Logger
 		
-	def run_check(device, service, conf)
-		$log.debug "[WORKERS] Checking #{service} on #{device} with #{conf}"
+	def run(device, service, conf)
+		debug "[WORKERS] Checking #{service} on #{device} with #{conf}"
 
 		# Do variable expantion
 		# TODO: add hostname and IP
-		# TODO: move this in Assets ?
-		begin
-			command = conf[:command] % conf
-		rescue KeyError => e
-			$log.error "[WORKERS] Cannot expand variable for #{conf[:command]}: #{e}"
-			return EM::DefaultDeferrable.failed(e)
+		command = conf[:command] % conf
+
+		output = ::IO.popen(command, :err=>[:child, :out]) do |io| 
+			begin
+				Timeout.timeout(2) { io.read }
+			rescue Timeout::Error
+				Process.kill 9, io.pid
+				raise
+			end
 		end
 
-		d=EM.defer_to_thread {
+		case $?.exitstatus
+			when 0
+				state = Database::State::OK
+			when 1
+				state = Database::State::WARN
+			else
+				state = Database::State::ERR
+		end
 
-			output = `#{command} 2>&1`
-			case $?.exitstatus
-				when 0
-					state = Database::State::OK
-				when 1
-					state = Database::State::WARN
-				else
-					state = Database::State::ERR
-			end
-			[state, output]
-		}
-		d.add_callback { |result|
-			d1=@db.set_state(device, service, result[0], result[1])
-			d1.add_errback { |e|
-				$log.error "[WORKERS] #{e}"
-			}
-			# TODO: Do this better with chainDeferred()
-		}
-		d.add_errback { |e|
-			message = "Failed to run #{command}: #{e}"
-			d1=@db.set_state(device, service, Database::State::ERR, message)
-			d1.add_errback { |e|
-				$log.error "[WORKERS] #{e}"
-			}
-		}
+		Celluloid::Actor[:redis].set_state(device, service, state, output)
+	rescue StandardError => e
+		# Select the good error message
+		message = case e
+			when KeyError
+				"Cannot expand variable for #{conf[:command]}: #{e}"
+			when Timeout::Error
+				"Timeout running #{command}"
+			else
+				"Failed to run #{command}: #{e}"
+		end
 
-		return d
+		warn "[WORKERS] #{message}"
+		Celluloid::Actor[:redis].set_state(device, service, Database::State::ERR, message)
 	end
+
 end
 
 # vim: ts=4:sw=4:ai:noet

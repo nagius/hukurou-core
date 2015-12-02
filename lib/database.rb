@@ -3,11 +3,15 @@
 
 # TODO: add history on pub/sub change state ?
 
+require 'celluloid/current'
 require "redis"
 require "hiredis"
 require "json"
 
 class Database
+    include Celluloid
+	include Celluloid::Internals::Logger
+
 	class State
 		OK = "OK"
 		ERR = "ERROR"
@@ -25,11 +29,9 @@ class Database
 	end
 
 	def set_state(device, service, state, message)
-		EM.defer_to_thread {
-
 		# NOTE: service can be a symbol
 
-        $log.debug "[REDIS] Saving state #{[device, service, state, message]}"
+        debug "[REDIS] Saving state #{[device, service, state, message]}"
 
 		now = Time.now.to_i
 
@@ -51,7 +53,7 @@ class Database
 				# TODO: add history
 			end
 			# TODO: pub/sub new device
-			$log.debug("[REDIS] New device detected: #{device}")
+			debug("[REDIS] New device detected: #{device}")
 		else
 			if @redis.hget(key_state, :state) == state
 				# Same state
@@ -69,28 +71,20 @@ class Database
 		end
 			
 		@redis.zadd("last_seens", now, "#{device}:#{service}")
-
-		}
 	end
 
 	def set_stale_state(device, service)
-		EM.defer_to_thread {
-
 		key_state = "state:#{device}:#{service}"
 
 		if @redis.hget(key_state, :state) != State::STALE
-			$log.debug "[REDIS] State flagged as stale: #{device}:#{service}"
+			debug "[REDIS] State flagged as stale: #{device}:#{service}"
 			@redis.hmset(key_state, :state, State::STALE, :starts_at, Time.now.to_i)
 			cancel_ack(key_state)
 			state_changed(key_state)
 		end
-
-		}
 	end
 
 	def get_state(device, service)
-		EM.defer_to_thread {
-
 		key_state = "state:#{device}:#{service}"
 
 		state = @redis.mapped_hmget(key_state, :state, :message, :last_seen, :starts_at, :ack_id, :mute_id)
@@ -111,27 +105,21 @@ class Database
 		end
 
 		state
-
-		}
 	end
 
 	def get_devices()
-		EM.defer_to_thread {
 		@redis.smembers("devices")
-		}
 	end
 
 	def get_states()
-		EM.defer_to_thread {
 		@redis.scan_each(:match => "state:*").map { |key|
 			device, service = key.split(":")[1,2]
 			{ :device => device, :service => service }
 		}
-		}
 	end
 
 	def delete_device(device)
-		$log.debug("[REDIS] Delete device: #{device}")
+		debug("[REDIS] Delete device: #{device}")
 
 		@redis.srem("devices", device)
 
@@ -146,17 +134,15 @@ class Database
 	end
 
 	def delete_state(device, service)
-		$log.debug("[REDIS] Delete state: #{device}:#{service}")
+		debug("[REDIS] Delete state: #{device}:#{service}")
 		delete_state_by_key("state:#{device}:#{service}")
 	end
 
 	def ack_state(device, service, message, user)
-		EM.defer_to_thread {
-
 		key_state = "state:#{device}:#{service}"
 
 		if @redis.hget(key_state, :ack_id).nil? # Do nothing if already acked
-			$log.debug("[REDIS] Acknowledge state: #{device}:#{service}")
+			debug("[REDIS] Acknowledge state: #{device}:#{service}")
 			id = @redis.incr("next_ack_id")
 
 			ack = {
@@ -174,14 +160,13 @@ class Database
 		else
 			nil	# Return nil if nothing done
 		end
-
-		}
 	end
 
 	def set_mute(devices, services, message, user, starts_at, ends_at)
-		EM.defer_to_thread {
+		# TODO assets: starts_at and ends_at must be Time object
+		# TODO devices and services must be Array
 
-		$log.debug("[REDIS] Added mute: #{devices}:#{services} by #{user} from #{starts_at} to #{ends_at}")
+		debug("[REDIS] Added mute: #{devices}:#{services} by #{user} from #{starts_at} to #{ends_at}")
 		# TODO: store exact list or wildcard ??
 
 		id = @redis.incr("next_mute_id")
@@ -216,21 +201,15 @@ class Database
 		
 		# Return the Id of created mute record
 		id
-
-		}
 	end
 
 	def get_mutes()
-		EM.defer_to_thread { 
-
 		mutes = []
 		@redis.scan_each(:match => "mute:*:obj") { |key|
 			mutes << get_mute(key)
 		}
 
 		mutes
-
-		}
 	end
 
 	def get_mute(key)
@@ -255,7 +234,7 @@ class Database
 	end
 
 	def delete_mute(id)
-		$log.debug("[REDIS] Mute ##{id} deleted")
+		debug("[REDIS] Mute ##{id} deleted")
 
 		# Get impacted states by this mute
 		muted_states = @redis.smembers("mute:#{id}:states").to_a
@@ -291,13 +270,13 @@ class Database
 
 		def state_changed(key_state)
 			# TODO: pub/sub change state
-			$log.debug("[REDIS] State change for #{key_state}")
+			debug("[REDIS] State change for #{key_state}")
 		end
 
 		def cancel_ack(key_state)
 			ack_id = @redis.hget(key_state, :ack_id)
 			if not ack_id.nil?
-				$log.debug("[REDIS] Acknowledge ##{ack_id} cancelled for #{key_state}")
+				debug("[REDIS] Acknowledge ##{ack_id} cancelled for #{key_state}")
 				@redis.hdel(key_state, :ack_id)	
 				@redis.del("ack:#{ack_id}")
 			end

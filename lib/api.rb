@@ -1,206 +1,162 @@
-require 'async-rack'
-require 'sinatra/base'
-require 'sinatra/json'
-require 'sinatra/async'
-require 'eventmachine'
 
-require 'pp'
-
-# BUGFIX: 404 request with async-rack fails with an uncaught exception
-# BUGFIX: Catching exception for logging doesn't work
-# BUGFIX: Sinatra crashes on a request folowing a 404
-
-# Monkey patching Rack::CommonLogger to change log format
-# Taken from lib/rack/commonlogger.rb - v1.5.2
-module Rack
-  class CommonLogger
-  	FORMAT = %{[%s] INFO [RACK] %s %s "%s %s%s %s" %d %s %0.4f\n}
-
-    def log(env, status, header, began_at)
-      now = Time.now
-      length = extract_content_length(header)
-
-      logger = @logger || env['rack.errors']
-      logger.write FORMAT % [
-        now.strftime("%Y-%m-%d %H:%M:%S %z"),
-        env['HTTP_X_FORWARDED_FOR'] || env["REMOTE_ADDR"] || "-",
-        env['HTTP_X_REMOTE_USER'] || env["REMOTE_USER"] || "-",
-        env["REQUEST_METHOD"],
-        env["PATH_INFO"],
-        env["QUERY_STRING"].empty? ? "" : "?"+env["QUERY_STRING"],
-        env["HTTP_VERSION"],
-        status.to_s[0..3],
-        length,
-        now - began_at ]
-    end
-  end
-end
+require 'celluloid/current'
+require 'angelo'
 
 
-class Api < Sinatra::Base
-	register Sinatra::Async
-	# BUG: Namespace plugin doesn't work with async
-	
-	def initialize(db, assets, workers, network)
-		super()
-		@db = db
-		@assets = assets
-		@workers = workers
-		@network = network
-		$log.info "[RACK] Starting Web API..."
-	end
+# TODO: slat parameters
+# TODO: params sinatra style
+# TODO: raise notfound when unknown device
 
-    # Framework configuration
-    configure do
-		set :show_exception, false
-        enable :logging
-		disable :traps
-		set :threaded, false
-    end
+class Router < Angelo::Base
+	content_type :json
+	report_errors!
 
-	# BUG: This function is not always executed when it should be
-	def handle_exception!(e)
-		case e
-			when Sinatra::NotFound
-				$log.warn "[RACK] Not Found: #{request.env['REQUEST_METHOD']} #{request.env['PATH_INFO']}"
-				ahalt 404, "Not found"
-			else
-				$log.error "[RACK] Exception catched #{e}"
-				e.backtrace.each { |trace|
-					$log.error "[RACK] \t #{trace}"
-				}
-		end
-	end
+	# List devices 
+	get '/devices' do 
+		Celluloid::Actor[:redis].get_devices()
+	end	
 
 	# Get checks definition for the device
-	aget '/device/:device/config' do |device|
-		body json @assets.get_device(device).get_services()
+	get '/device/:device/config' do
+		device = params["device"]
+		Celluloid::Actor[:assets].get_device(device).get_services()
 	end
 
 	# Get the device states
-	aget '/device/:device/state' do |device|
-		@db.get_state(device).callback { |result|
-			body json result
-		}
+#	get '/device/:device/state' do
+#		device = params["device"]
+#		Celluloid::Actor[:redis].get_state(device)
+#	end
+
+	# Get check results for specific device
+	get '/state/:device/:service' do 
+		device = params["device"]
+		service = params["service"]
+
+		Celluloid::Actor[:redis].get_state(device, service)
 	end
 
-	# Get check results for specific device, with history
-	aget '/state/:device/:service' do |device, service|
-		@db.get_service(device, service).callback { |result|
-			body json result
-		}
+#	aget '/path*' do
+#		# Get the path as list of directory
+#		path = params['splat'][0].split('/').reject(&:empty?)
+#
+#		begin
+#			body json @assets.get_sub_dir(path)
+#		rescue PathNotFoundError
+#			ahalt 404, "Path not found"
+#		end
+#	end
+#
+#	aget '/group*' do
+#		# Get the path as list of directory
+#		path = params['splat'][0].split('/').reject(&:empty?)
+#
+#		begin
+#			devices=@assets.get_devices_by_path(path)
+#			dl = devices.map { |device|
+#				d=@db.get_state(device)
+#				d.add_callback { |states|
+#					# Return a hash with the device name as key and list of states as value
+#					{ device => states }
+#				}
+#				d.add_errback { |e| ahalt 500, e.to_s }
+#
+#				d
+#			}
+#			
+#			d=EM::DeferrableList.new(dl)
+#			d.add_callback { |result|
+#				# Reject failed results
+#				result.select!{ |x| x[0] }
+#
+#				# Discard result status and keep the value
+#				result.map!{ |x| x[1] }
+#
+#				# Flatten the list of hashes into a single hash (empty hash if no result}
+#				hash = result.inject(:merge) || {}
+#				body json hash
+#			}
+#			d.add_errback { |e| ahalt 500, e.to_s }
+#		rescue PathNotFoundError
+#			ahalt 404, "Path not found"
+#		end
+#	end
+
+	get '/tree' do
+		Celluloid::Actor[:assets].get_directory_tree
 	end
-
-	aget '/path*' do
-		# Get the path as list of directory
-		path = params['splat'][0].split('/').reject(&:empty?)
-
-		begin
-			body json @assets.get_sub_dir(path)
-		rescue PathNotFoundError
-			ahalt 404, "Path not found"
-		end
-	end
-
-	aget '/group*' do
-		# Get the path as list of directory
-		path = params['splat'][0].split('/').reject(&:empty?)
-
-		begin
-			devices=@assets.get_devices_by_path(path)
-			dl = devices.map { |device|
-				d=@db.get_state(device)
-				d.add_callback { |states|
-					# Return a hash with the device name as key and list of states as value
-					{ device => states }
-				}
-				d.add_errback { |e| ahalt 500, e.to_s }
-
-				d
-			}
-			
-			d=EM::DeferrableList.new(dl)
-			d.add_callback { |result|
-				# Reject failed results
-				result.select!{ |x| x[0] }
-
-				# Discard result status and keep the value
-				result.map!{ |x| x[1] }
-
-				# Flatten the list of hashes into a single hash (empty hash if no result}
-				hash = result.inject(:merge) || {}
-				body json hash
-			}
-			d.add_errback { |e| ahalt 500, e.to_s }
-		rescue PathNotFoundError
-			ahalt 404, "Path not found"
-		end
-	end
-
-	aget '/tree' do
-		body json @assets.get_directory_tree
-	end
-
-	# List devices in this DC
-	aget '/devices' do 
-		@db.get_devices().callback { |result|
-			body json result
-		}
-	end	
 
 	# Delete a device
-	adelete '/device/:device' do |device|
-		if @workers.device_registered?(device)
-			@network.device_deleted(device)
-			ahalt 204, "Device deleted"
+	delete '/device/:device' do 
+		device = params["device"]
+		if Celluloid::Actor[:workers].device_registered?(device)
+			Celluloid::Actor[:net].device_deleted(device)
+			halt 204, "Device deleted"
 		else
-			ahalt 404, "Device not found"
+			halt 404, "Device not found"
 		end
 	end
 
 	# Register a new device
-	apost '/device/:device' do |device|
-		@network.device_added(device)
-		ahalt 201, "Device added"
+	post '/device/:device' do 
+		device = params["device"]
+		Celluloid::Actor[:net].device_added(device)
+		halt 201, "Device added"
 	end
 
 	# Save state for a device's service
-	apost '/device/:device/:service' do |device, service|
+	post '/device/:device/:service' do 
+		device = params["device"]
+		service = params["service"]
+
 		%w[state message].each do |param|
 			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
 		end
 
-		d=@db.set_state(device, service, params['state'], params['message'])
-		d.callback { |is_new| 
-			@network.device_added(device) if is_new
-			ahalt 201, "State saved"
-		}
-		d.errback { |e| ahalt 500, e.to_s }
+		Celluloid::Actor[:redis].set_state(device, service, params['state'], params['message'])
+		halt 201, "State saved"
 	end
 
 	# Acknowledge an alert
-	apost '/device/:device/:service/acknowledge' do |device, service|
+	post '/device/:device/:service/acknowledge' do
+		device = params["device"]
+		service = params["service"]
+
 		# TODO: factorize params check
 		%w[message user].each do |param|
 			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
 		end
 
-		d=@db.ack_state(device, service, params['message'], params['user'])
-		d.callback { ahalt 201, "Alert acknowledged" }
-		d.errback { |e| ahalt 500, e.to_s }
+		Celluloid::Actor[:redis].ack_state(device, service, params['message'], params['user'])
+		halt 201, "Alert acknowledged"
 	end
 
 	# Create a new maintenance
-	apost '/maintenance' do
+	post '/maintenance' do
 		%w[device service start end message user].each do |param|
 			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
 		end
 		
-		d=@db.add_maintenance(params['device'], params['service'], params['start'], params['end'], params['message'], params['user'])
-		d.callback { ahalt 201, "Maintenance saved" }
-		d.errback { |e| ahalt 500, e.to_s }
+		begin
+			starts_at = Time.parse(params['start'])
+			ends_at = Time.parse(params['end'])
+		rescue ArgumentError => e
+			halt 400, "Wrong time format: #{e}"
+		end
+		
+		Celluloid::Actor[:redis].set_mute(params['device'], params['service'], params['message'], params['user'], starts_at, ends_at)
+		halt 201, "Maintenance saved"
 	end
 
+end
+
+class API
+	include Celluloid
+
+	def start
+		Router.log_level ::Logger::DEBUG if $CELLULOID_DEBUG
+		Router.run
+	end
 end
 
 # vim: ts=4:sw=4:ai:noet
