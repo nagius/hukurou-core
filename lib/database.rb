@@ -274,8 +274,10 @@ class Database
 	private
 
 		def state_changed(key_state)
-			# TODO: pub/sub change state
 			debug("[REDIS] State change for #{key_state}")
+
+			(_, device, service) = key_state.split(':')
+			@redis.publish(:events, {:event => :state_change, :device => device, :service => service }.to_json)
 		end
 
 		def cancel_ack(key_state)
