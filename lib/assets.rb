@@ -109,7 +109,8 @@ class Assets
 	def initialize()
 		@default_device=nil
 		@expanded_tree=nil
-		load_assets()
+
+		async.load_assets
 	end
 
 	def load_assets()
@@ -124,6 +125,9 @@ class Assets
 		rescue Errno::ENOENT => e
 			raise "Can't parse directory #{$CFG[:assets]}, check config variable :assets : #{e}"
 		end
+
+		devices = Celluloid::Actor[:redis].get_devices()
+		expand_tree(devices)
 	end
 	
 	def reload()
@@ -252,6 +256,8 @@ class Assets
 
 	# Replace config entities by list of running devices
 	def expand_tree(devices)
+		debug "[ASSETS] Expanding device tree"
+
 		# TODO: assert devices:list of string
 		
 		# Duplicate the tree structure without devices (only directory)

@@ -150,7 +150,7 @@ class API
 
 	def shutdown
 		info "[API] Stopping web server."
-		@server.async.shutdown unless @server.nil?
+		@server.async.shutdown
 	end
 
 	def start

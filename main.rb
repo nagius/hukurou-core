@@ -169,14 +169,17 @@ load_config
 $CELLULOID_DEBUG = $CFG[:debug]
 
 class Supervisor <  Celluloid::Supervision::Container
-  supervise type: Assets, 	as: :assets
-  supervise type: Database, as: :redis
-  supervise type: Workers,	as: :workers
-  supervise type: Network, 	as: :net
-  supervise type: API,	 	as: :api
+	supervise type: Database,	as: :redis
+	supervise type: Assets, 	as: :assets
+	supervise type: Workers,	as: :workers
+	supervise type: Network, 	as: :net
+	supervise type: API,	 	as: :api
 end
 
-# TODO: trap HUP assets.reload
+trap "HUP" do
+	# FIXME: this doesn't work
+	Celluloid::Actor[:assets].async.reload()
+end
 
 # Start main loop
 Celluloid.logger.info "[CORE] Starting application..."
