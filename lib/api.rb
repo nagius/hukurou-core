@@ -11,6 +11,12 @@ class Router < Angelo::Base
 	content_type :json
 	report_errors!
 
+	def validate!(keys)	
+		keys.each do |param|
+			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
+		end
+	end
+		
 	# List devices 
 	get '/devices' do 
 		Celluloid::Actor[:redis].get_devices()
@@ -18,8 +24,7 @@ class Router < Angelo::Base
 
 	# Get checks definition for the device
 	get '/device/:device/config' do
-		device = params["device"]
-		Celluloid::Actor[:assets].get_device(device).get_services()
+		Celluloid::Actor[:assets].get_device(params["device"]).get_services()
 	end
 
 	# Get the device states
@@ -30,10 +35,7 @@ class Router < Angelo::Base
 
 	# Get check results for specific device
 	get '/state/:device/:service' do 
-		device = params["device"]
-		service = params["service"]
-
-		Celluloid::Actor[:redis].get_state(device, service)
+		Celluloid::Actor[:redis].get_state(params["device"], params["service"])
 	end
 
 #	aget '/path*' do
@@ -89,6 +91,7 @@ class Router < Angelo::Base
 	# Delete a device
 	delete '/device/:device' do 
 		device = params["device"]
+
 		if Celluloid::Actor[:workers].device_registered?(device)
 			Celluloid::Actor[:net].device_deleted(device)
 			halt 204, "Device deleted"
@@ -99,43 +102,29 @@ class Router < Angelo::Base
 
 	# Register a new device
 	post '/device/:device' do 
-		device = params["device"]
-		Celluloid::Actor[:net].device_added(device)
+		Celluloid::Actor[:net].device_added(params["device"])
 		halt 201, "Device added"
 	end
 
 	# Save state for a device's service
 	post '/device/:device/:service' do 
-		device = params["device"]
-		service = params["service"]
+		validate!(%w[device service state message])
 
-		%w[state message].each do |param|
-			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
-		end
-
-		Celluloid::Actor[:redis].set_state(device, service, params['state'], params['message'])
+		Celluloid::Actor[:redis].set_state(params["device"], params["service"], params['state'], params['message'])
 		halt 201, "State saved"
 	end
 
 	# Acknowledge an alert
 	post '/device/:device/:service/acknowledge' do
-		device = params["device"]
-		service = params["service"]
+		validate!(%w[device service message user])
 
-		# TODO: factorize params check
-		%w[message user].each do |param|
-			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
-		end
-
-		Celluloid::Actor[:redis].ack_state(device, service, params['message'], params['user'])
+		Celluloid::Actor[:redis].ack_state(params["device"], params["service"], params['message'], params['user'])
 		halt 201, "Alert acknowledged"
 	end
 
 	# Create a new maintenance
 	post '/maintenance' do
-		%w[device service start end message user].each do |param|
-			halt 400, "Parameter '#{param}' missing." unless params.has_key? param
-		end
+		validate!(%w[device service start end message user])
 		
 		begin
 			starts_at = Time.parse(params['start'])
