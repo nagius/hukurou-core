@@ -106,24 +106,28 @@ class Database
 	def get_state(device, service)
 		key_state = "state:#{device}:#{service}"
 
-		state = @redis.mapped_hmget(key_state, :state, :message, :last_seen, :starts_at, :ack_id, :mute_id)
+		if @redis.exists(key_state)
+			state = @redis.mapped_hmget(key_state, :state, :message, :last_seen, :starts_at, :ack_id, :mute_id)
 
-		# Convert timestame to Time
-		state[:last_seen] = Time.at(state[:last_seen].to_i)
-		state[:starts_at] = Time.at(state[:starts_at].to_i)
+			# Convert timestame to Time
+			state[:last_seen] = Time.at(state[:last_seen].to_i)
+			state[:starts_at] = Time.at(state[:starts_at].to_i)
 
-		# Add ack infos
-		if not state[:ack_id].nil?
-			state[:ack] = @redis.mapped_hmget("ack:#{state[:ack_id]}", :message, :user, :created_at)
-			state[:ack][:created_at] = Time.at(state[:ack][:created_at].to_i)
+			# Add ack infos
+			if not state[:ack_id].nil?
+				state[:ack] = @redis.mapped_hmget("ack:#{state[:ack_id]}", :message, :user, :created_at)
+				state[:ack][:created_at] = Time.at(state[:ack][:created_at].to_i)
+			end
+
+			# Add mute infos
+			if not state[:mute_id].nil?
+				state[:mute] = get_mute(state[:mute_id])
+			end
+
+			state
+		else
+			nil
 		end
-
-		# Add mute infos
-		if not state[:mute_id].nil?
-			state[:mute] = get_mute(state[:mute_id])
-		end
-
-		state
 	end
 
 	def get_states()
@@ -137,7 +141,7 @@ class Database
 		@redis.smembers("devices")
 	end
 
-	def device_exist?(device)
+	def device_exists?(device)
 		@redis.sismember("devices", device)
 	end
 
@@ -172,7 +176,7 @@ class Database
 	def ack_state(device, service, message, user)
 		key_state = "state:#{device}:#{service}"
 
-		if @redis.hget(key_state, :ack_id).nil? # Do nothing if already acked
+		if not @redis.hexists(key_state, :ack_id) # Do nothing if already acked
 			debug("[REDIS] Acknowledge state: #{device}:#{service}")
 			id = @redis.incr("next_ack_id")
 

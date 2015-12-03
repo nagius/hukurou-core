@@ -35,7 +35,10 @@ class Router < Angelo::Base
 
 	# Get check results for specific device
 	get '/state/:device/:service' do 
-		Celluloid::Actor[:redis].get_state(params["device"], params["service"])
+		state = Celluloid::Actor[:redis].get_state(params["device"], params["service"])
+		halt 404, "Device or service not found" if state.nil?
+		
+		state
 	end
 
 #	aget '/path*' do
@@ -104,8 +107,8 @@ class Router < Angelo::Base
 	post '/device/:device' do 
 		device = params["device"]
 
-		if Celluloid::Actor[:redis].device_exist?(device)
-			halt 200, "Device already exist"
+		if Celluloid::Actor[:redis].device_exists?(device)
+			halt 200, "Device already exists"
 		else
 			Celluloid::Actor[:redis].add_device(device)
 			halt 201, "Device added"
