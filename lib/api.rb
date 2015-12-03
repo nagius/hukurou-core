@@ -161,7 +161,7 @@ class API
 
 	def start
 		info "[API] Starting web server."
-		@server = Router.run
+		@server = Router.run($CFG[:api][:listen], $CFG[:api][:port])
 	end
 end
 
