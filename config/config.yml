@@ -4,9 +4,11 @@
     :listen: "0.0.0.0"
 :core:
     :iface: "eth0"
+    :stale_age: 6000
+    :stale_freq: 5
 
 :database:
-    :host: "127.0.0.1"
+    :host: "10.110.3.202"
 
 :assets: "../../config/assets"
 :services: "../../config/services.yml"

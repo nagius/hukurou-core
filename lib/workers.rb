@@ -15,6 +15,13 @@ class Workers
 		@me = Socket.gethostname
 		@nodes = Hash.new				# Hash of node containing list of device managed by the node
 		@workers = Hash.new				# Hash of device containing list of Timer for each check
+		async.run
+	end
+
+	def run
+		@watchdog = every($CFG[:core][:stale_freq]) { 
+			async.check_stales()
+		}
 		@pool = Worker.pool(size: 20) 	# Pool of thread to execute checks
 	end
 
@@ -26,6 +33,17 @@ class Workers
 		# TODO: optimize by keeping sorted list and length as instance variable
 		nodes=@nodes.keys.sort
 		nodes[device.sum % nodes.length]
+	end
+
+	def check_stales()
+		debug "[WORKERS] Checking stale states"
+
+		states = Celluloid::Actor[:redis].get_stale_states($CFG[:core][:stale_age]) # TODO: put this on config file
+		states.each { |device, service|
+			if dispatch(device) == @me # TODO: refactor this
+				Celluloid::Actor[:redis].set_stale_state(device, service)
+			end
+		}
 	end
 
 	def device_registered?(device)

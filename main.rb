@@ -21,7 +21,9 @@ def load_config
 		},
 		:core => {
 			:iface => "eth0",
-			:port => 1664
+			:port => 1664,
+			:stale_age => 6000,
+			:stale_freq => 5
 		},
         :debug => false,
 		:assets => "/etc/hukurou/assets",

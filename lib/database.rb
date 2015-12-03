@@ -103,11 +103,17 @@ class Database
 		key_state = "state:#{device}:#{service}"
 
 		if @redis.hget(key_state, :state) != State::STALE
-			debug "[REDIS] State flagged as stale: #{device}:#{service}"
+			info "[REDIS] State flagged as stale: #{device}:#{service}"
 			@redis.hmset(key_state, :state, State::STALE, :starts_at, Time.now.to_i)
 			cancel_ack(key_state)
 			state_changed(key_state)
 		end
+	end
+
+	def get_stale_states(age)
+		@redis.zrangebyscore("last_seens", 0, (Time.now.to_i - age)).map { |key|
+			key.split(":")
+		}
 	end
 
 	def get_state(device, service)
@@ -185,7 +191,7 @@ class Database
 	end
 
 	def delete_state(device, service)
-		debug("[REDIS] Delete state: #{device}:#{service}")
+		info "[REDIS] Delete state: #{device}:#{service}"
 		delete_state_by_key("state:#{device}:#{service}")
 	end
 
@@ -193,7 +199,7 @@ class Database
 		key_state = "state:#{device}:#{service}"
 
 		if not @redis.hexists(key_state, :ack_id) # Do nothing if already acked
-			debug("[REDIS] Acknowledge state: #{device}:#{service}")
+			info "[REDIS] Acknowledge state: #{device}:#{service}"
 			id = @redis.incr("next_ack_id")
 
 			ack = {
@@ -217,7 +223,7 @@ class Database
 		# TODO assets: starts_at and ends_at must be Time object
 		# TODO devices and services must be Array
 
-		debug("[REDIS] Added mute: #{devices}:#{services} by #{user} from #{starts_at} to #{ends_at}")
+		info "[REDIS] Added mute: #{devices}:#{services} by #{user} from #{starts_at} to #{ends_at}"
 		# TODO: store exact list or wildcard ??
 
 		id = @redis.incr("next_mute_id")
@@ -285,7 +291,7 @@ class Database
 	end
 
 	def delete_mute(id)
-		debug("[REDIS] Mute ##{id} deleted")
+		info "[REDIS] Mute ##{id} deleted"
 
 		# Get impacted states by this mute
 		muted_states = @redis.smembers("mute:#{id}:states").to_a
@@ -320,7 +326,7 @@ class Database
 	private
 
 		def state_changed(key_state)
-			debug("[REDIS] State change for #{key_state}")
+			info "[REDIS] State change for #{key_state}"
 
 			(_, device, service) = key_state.split(':')
 			@redis.publish(:events, {:event => "state_change", :device => device, :service => service }.to_json)
@@ -329,7 +335,7 @@ class Database
 		def cancel_ack(key_state)
 			ack_id = @redis.hget(key_state, :ack_id)
 			if not ack_id.nil?
-				debug("[REDIS] Acknowledge ##{ack_id} cancelled for #{key_state}")
+				info "[REDIS] Acknowledge ##{ack_id} cancelled for #{key_state}"
 				@redis.hdel(key_state, :ack_id)	
 				@redis.del("ack:#{ack_id}")
 			end
