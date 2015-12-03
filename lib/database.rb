@@ -103,7 +103,7 @@ class Database
 		key_state = "state:#{device}:#{service}"
 
 		if @redis.hget(key_state, :state) != State::STALE
-			info "[REDIS] State flagged as stale: #{device}:#{service}"
+			info "[REDIS] Detected stale state: #{device} #{service}"
 			@redis.hmset(key_state, :state, State::STALE, :starts_at, Time.now.to_i)
 			cancel_ack(key_state)
 			state_changed(key_state)

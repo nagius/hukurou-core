@@ -153,44 +153,47 @@ class Worker
 	def run(device, service, conf)
 		debug "[WORKERS] Checking #{service} on #{device} with #{conf}"
 
-		# Do variable expantion
-		# TODO: add hostname and IP
-		command = conf[:command] % conf
+		begin
+			# Do variable expantion
+			# TODO: add hostname and IP
+			command = conf[:command] % conf
 
-		output = ::IO.popen(command, :err=>[:child, :out]) do |io| 
-			begin
-				Timeout.timeout(2) { io.read }
-			rescue Timeout::Error
-				Process.kill 9, io.pid
-				raise
+			output = ::IO.popen(command, :err=>[:child, :out]) do |io| 
+				begin
+					Timeout.timeout(2) { io.read }
+				rescue Timeout::Error
+					Process.kill 9, io.pid
+					raise
+				end
 			end
-		end
 
-		case $?.exitstatus
-			when 0
-				state = Database::State::OK
-			when 1
-				state = Database::State::WARN
-			else
-				state = Database::State::ERR
-		end
+			case $?.exitstatus
+				when 0
+					state = Database::State::OK
+				when 1
+					state = Database::State::WARN
+				else
+					state = Database::State::ERR
+			end
 
-		Celluloid::Actor[:redis].set_state(device, service, state, output)
-	rescue StandardError => e
-		# Select the good error message
-		message = case e
-			when KeyError
-				"Cannot expand variable for #{conf[:command]}: #{e}"
-			when Timeout::Error
-				"Timeout running #{command}"
-			else
-				"Failed to run #{command}: #{e}"
-		end
+			Celluloid::Actor[:redis].set_state(device, service, state, output)
+		rescue StandardError => e
+			# Select the good error message
+			message = case e
+				when KeyError
+					"Cannot expand variable for #{conf[:command]}: #{e}"
+				when Timeout::Error
+					"Timeout running #{command}"
+				else
+					"Failed to run #{command}: #{e}"
+			end
 
-		warn "[WORKERS] #{message}"
-		Celluloid::Actor[:redis].set_state(device, service, Database::State::ERR, message)
+			warn "[WORKERS] #{message}"
+			Celluloid::Actor[:redis].set_state(device, service, Database::State::ERR, message)
+		end
+	rescue DeadActorError
+		warn "[WORKERS] Redis actor is dead."
 	end
-
 end
 
 # vim: ts=4:sw=4:ai:noet
