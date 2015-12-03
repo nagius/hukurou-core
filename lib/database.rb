@@ -4,12 +4,12 @@
 # TODO: add history on pub/sub change state ?
 
 require 'celluloid/current'
-require "redis"
-require "hiredis"
+require 'celluloid/io'
+require "celluloid/redis"
 require "json"
 
 class Database
-    include Celluloid
+	include Celluloid::IO
 	include Celluloid::Internals::Logger
 	finalizer :shutdown
 
@@ -21,15 +21,33 @@ class Database
 	end
 
 	def initialize()
-		@redis = Redis.new($CFG[:database])
+		async.run
+	end
+
+	def run()
+		# Force celluloid driver for Redis
+		config = $CFG[:database].merge(:driver => "celluloid")
+
+		# Open two redis connection, one for data, one for events
+		@redis = ::Redis.new(config)
+		@pubsub = ::Redis.new(config)
 
 		# Check mimium version (needed for *scan features)
 		if @redis.info["redis_version"] < "2.8.0"
-			abort "Redis version must be >= 2.8.0"
+			error "Redis version must be >= 2.8.0"
+			Celluloid.shutdown
 		end
+
+		@pubsub.subscribe(:events) { |on|
+			on.message { |channel, message|
+				async.handle_event(message)
+			}
+		}
 	end
 
 	def shutdown()
+		@pubsub.unsubscribe(:events)
+		#@pubsub.quit  # This crash with a <NoMethodError: undefined method `disconnect'> Bug ?
 		@redis.quit
 	end
 
@@ -52,13 +70,9 @@ class Database
 
 		if not @redis.sismember("devices", device)
 			# New device
-			@redis.pipelined do
-				@redis.mapped_hmset(key_state, data)
-				@redis.sadd("devices", device)
-				# TODO: add history
-			end
-			# TODO: pub/sub new device
-			debug("[REDIS] New device detected: #{device}")
+			@redis.mapped_hmset(key_state, data)
+			add_device(device)
+			# TODO: add history
 		else
 			if @redis.hget(key_state, :state) == state
 				# Same state
@@ -112,10 +126,6 @@ class Database
 		state
 	end
 
-	def get_devices()
-		@redis.smembers("devices")
-	end
-
 	def get_states()
 		@redis.scan_each(:match => "state:*").map { |key|
 			device, service = key.split(":")[1,2]
@@ -123,8 +133,22 @@ class Database
 		}
 	end
 
+	def get_devices()
+		@redis.smembers("devices")
+	end
+
+	def device_exist?(device)
+		@redis.sismember("devices", device)
+	end
+
+	def add_device(device)
+		info "[REDIS] New device: #{device}"
+		@redis.sadd("devices", device)
+		@redis.publish(:events, {:event => "device_added", :device => device}.to_json)
+	end
+
 	def delete_device(device)
-		debug("[REDIS] Delete device: #{device}")
+		info "[REDIS] Delete device: #{device}"
 
 		@redis.srem("devices", device)
 
@@ -136,6 +160,8 @@ class Database
 		@redis.zscan_each("last_seens", :match => "#{device}:*") { |key|
 			@redis.zrem("last_seens", key[0])
 		}
+
+		@redis.publish(:events, {:event => "device_deleted", :device => device}.to_json)
 	end
 
 	def delete_state(device, service)
@@ -277,7 +303,7 @@ class Database
 			debug("[REDIS] State change for #{key_state}")
 
 			(_, device, service) = key_state.split(':')
-			@redis.publish(:events, {:event => :state_change, :device => device, :service => service }.to_json)
+			@redis.publish(:events, {:event => "state_change", :device => device, :service => service }.to_json)
 		end
 
 		def cancel_ack(key_state)
@@ -307,6 +333,34 @@ class Database
 			
 			@redis.del(key_state)
 		end
+
+		def handle_event(event)
+			data = JSON.parse(event, :symbolize_names => true)
+			debug "[REDIS] Received event #{data}"
+
+			case data[:event]
+				when "device_added"
+					device = data[:device]
+					raise MessageCorruptedError, "#{data}" if device.nil?
+
+					info "[REDIS] Notified of new device: #{device}"
+					Celluloid::Actor[:assets].async.add_device(device)
+					Celluloid::Actor[:workers].async.add_device(device)
+				when "device_deleted"
+					device = data[:device]
+					raise MessageCorruptedError, "#{data}" if device.nil?
+
+					info "[REDIS] Notified of device deleted: #{device}"
+					Celluloid::Actor[:assets].async.delete_device(device)
+					Celluloid::Actor[:workers].async.delete_device(device)
+			end
+
+		rescue JSON::ParserError, MessageCorruptedError => e
+			warn "[REDIS] Received corrupted message: #{e}"
+		end
+end
+
+class Database::MessageCorruptedError < RuntimeError
 end
 
 # vim: ts=4:sw=4:ai:noet

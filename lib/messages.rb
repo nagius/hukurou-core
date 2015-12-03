@@ -80,28 +80,6 @@ module Message
 		end	
 	end
 
-	class DeviceAdded < AbstractMessage
-		def device
-			@data
-		end
-
-		def set_device(device)
-			@data=device
-			return self
-		end	
-	end
-
-	class DeviceDeleted < AbstractMessage
-		def device
-			@data
-		end
-
-		def set_device(device)
-			@data=device
-			return self
-		end	
-	end
-
 	# Map each type of message
 	TYPE = {
 		'join' 		=> Join,
@@ -111,8 +89,6 @@ module Message
 		'ask' 		=> JoinRequest,
 		'denied' 	=> Denied,
 		'grant' 	=> Granted,
-		'new'		=> DeviceAdded,
-		'delete'	=> DeviceDeleted
 	}
 
 	# Parse UDP data and return the corresponding Message subclass

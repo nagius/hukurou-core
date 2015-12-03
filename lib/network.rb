@@ -93,12 +93,6 @@ class Network
 						info "[NET] Node #{msg.host} rejected by #{msg.src}. Removing from cluster."
 						remove_node(msg.host)
 					end
-				when Message::DeviceAdded
-					info "[NET] Device added: #{msg.device}"
-					notify_device_change(msg.device, :add)
-				when Message::DeviceDeleted
-					info "[NET] Device deleted: #{msg.device}"
-					notify_device_change(msg.device, :delete)
 				else
 					info "[NET] Unknown message type #{msg.class} from #{ip}"
 			end
@@ -177,17 +171,6 @@ class Network
 		@status.keys + [@me]
 	end
 
-	# TODO: move this to pub/sub in Redis
-	def device_added(device)
-		broadcast(Message::DeviceAdded.new.set_device(device))
-		notify_device_change(device, :add)		# Also locally notify because our own message are discarded
-	end
-
-	def device_deleted(device)
-		broadcast(Message::DeviceDeleted.new.set_device(device))
-		notify_device_change(device, :delete)	# Also locally notify because our own message are discarded
-	end
-
 	private
 
 		def broadcast(msg)
@@ -206,10 +189,6 @@ class Network
 
 		def notify_node_change()
 			Celluloid::Actor[:workers].rebalance(get_nodes())
-		end
-
-		def notify_device_change(device, action)
-			puts "device change"
 		end
 
 end

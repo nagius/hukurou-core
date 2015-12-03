@@ -286,7 +286,7 @@ class Assets
 	end
 
 	# Remove a dead device from the expanded tree
-	def remove_device(device)
+	def delete_device(device)
 		@expanded_tree.each { |node|
 			if node.name == device
 				node.remove_from_parent!

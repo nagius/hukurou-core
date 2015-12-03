@@ -92,8 +92,8 @@ class Router < Angelo::Base
 	delete '/device/:device' do 
 		device = params["device"]
 
-		if Celluloid::Actor[:workers].device_registered?(device)
-			Celluloid::Actor[:net].device_deleted(device)
+		if Celluloid::Actor[:redis].device_exist?(device)
+			Celluloid::Actor[:redis].delete_device(device)
 			halt 204, "Device deleted"
 		else
 			halt 404, "Device not found"
@@ -102,8 +102,14 @@ class Router < Angelo::Base
 
 	# Register a new device
 	post '/device/:device' do 
-		Celluloid::Actor[:net].device_added(params["device"])
-		halt 201, "Device added"
+		device = params["device"]
+
+		if Celluloid::Actor[:redis].device_exist?(device)
+			halt 200, "Device already exist"
+		else
+			Celluloid::Actor[:redis].add_device(device)
+			halt 201, "Device added"
+		end
 	end
 
 	# Save state for a device's service

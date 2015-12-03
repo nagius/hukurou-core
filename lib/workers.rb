@@ -64,6 +64,7 @@ class Workers
 
 	def stop_workers(device)
 		info "[WORKERS] Stopping workers for device #{device}..."
+		# TODO: kill running checks
 		@workers[device].each { |worker|
 			worker.cancel()
 		}
@@ -87,7 +88,7 @@ class Workers
 		@nodes[@me] || []
 	end
 
-	def remove_device(device)
+	def delete_device(device)
 		target = dispatch(device)
 		stop_workers(device) if target == @me
 		@nodes[target].delete(device)
