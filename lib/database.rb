@@ -160,9 +160,11 @@ class Database
 	end
 
 	def add_device(device)
-		info "[REDIS] New device: #{device}"
-		@redis.sadd("devices", device)
-		@redis.publish(:events, {:event => "device_added", :device => device}.to_json)
+		if not Celluloid::Actor[:workers].device_registered?(device)
+			info "[REDIS] New device: #{device}"
+			@redis.sadd("devices", device)
+			@redis.publish(:events, {:event => "device_added", :device => device}.to_json)
+		end
 	end
 
 	def delete_device(device)
