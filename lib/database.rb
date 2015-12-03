@@ -130,10 +130,17 @@ class Database
 		end
 	end
 
-	def get_states()
+	def get_all_states()
 		@redis.scan_each(:match => "state:*").map { |key|
 			device, service = key.split(":")[1,2]
 			{ :device => device, :service => service }
+		}
+	end
+
+	def get_states(device)
+		@redis.scan_each(:match => "state:#{device}:*").map { |key|
+			service = key.split(":")[2]
+			get_state(device, service)
 		}
 	end
 

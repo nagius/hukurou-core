@@ -28,10 +28,15 @@ class Router < Angelo::Base
 	end
 
 	# Get the device states
-#	get '/device/:device/state' do
-#		device = params["device"]
-#		Celluloid::Actor[:redis].get_state(device)
-#	end
+	get '/states/:device' do
+		device = params["device"]
+
+		if Celluloid::Actor[:redis].device_exists?(device)
+			Celluloid::Actor[:redis].get_states(device)
+		else
+			halt 404, "Device not found"
+		end
+	end
 
 	# Get check results for specific device
 	get '/state/:device/:service' do 
@@ -116,7 +121,7 @@ class Router < Angelo::Base
 	end
 
 	# Save state for a device's service
-	post '/device/:device/:service' do 
+	post '/state/:device/:service' do 
 		validate!(%w[device service state message])
 
 		Celluloid::Actor[:redis].set_state(params["device"], params["service"], params['state'], params['message'])
@@ -124,7 +129,7 @@ class Router < Angelo::Base
 	end
 
 	# Acknowledge an alert
-	post '/device/:device/:service/acknowledge' do
+	post '/state/:device/:service/acknowledge' do
 		validate!(%w[device service message user])
 
 		Celluloid::Actor[:redis].ack_state(params["device"], params["service"], params['message'], params['user'])
