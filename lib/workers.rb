@@ -12,7 +12,7 @@ class Workers
 	finalizer :shutdown
 
 	def initialize()
-		@me = Socket.gethostname
+		@localhost = Socket.gethostname
 		@nodes = Hash.new				# Hash of node containing list of device managed by the node
 		@workers = Hash.new				# Hash of device containing list of Timer for each check
 		async.run
@@ -35,12 +35,16 @@ class Workers
 		nodes[device.sum % nodes.length]
 	end
 
+	def is_local?(device)
+		dispatch(device) == @localhost
+	end
+
 	def check_stales()
 		debug "[WORKERS] Checking stale states"
 
 		states = Celluloid::Actor[:redis].get_stale_states($CFG[:core][:stale_age]) # TODO: put this on config file
 		states.each { |device, service|
-			if dispatch(device) == @me # TODO: refactor this
+			if is_local?(device)
 				Celluloid::Actor[:redis].set_stale_state(device, service)
 			end
 		}
@@ -103,12 +107,12 @@ class Workers
 	end
 
 	def get_local_devices()
-		@nodes[@me] || []
+		@nodes[@localhost] || []
 	end
 
 	def delete_device(device)
 		target = dispatch(device)
-		stop_workers(device) if target == @me
+		stop_workers(device) if target == @localhost
 		@nodes[target].delete(device)
 	end
 
@@ -119,7 +123,7 @@ class Workers
 		@nodes[target] << device
 
 		# Start worker if target is local node
-		start_workers(device) if target == @me
+		start_workers(device) if target == @localhost
 	end
 
 	def rebalance_workers()

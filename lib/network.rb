@@ -26,7 +26,7 @@ class Network
 	
 	def initialize
 		@hb = Message::Heartbeat.new	# Generate the heartbeat message only once
-		@me = Socket.gethostname		# My name
+		@localhost = Socket.gethostname		# My name
 		@status={}						# List of remote nodes with timestamps
 
 		@socket = Celluloid::IO::UDPSocket.new
@@ -57,7 +57,7 @@ class Network
 			msg=Message::get(data, ip)
 
 			# Discard own messages
-			return if msg.src == @me
+			return if msg.src == @localhost
 
 			# Dispatch message
 			case msg
@@ -86,7 +86,7 @@ class Network
 					info "[NET] Node leaving cluster: #{msg.src}"
 					remove_node(msg.src)
 				when Message::Eject
-					if msg.host == @me
+					if msg.host == @localhost
 						warn "[NET] I've been kicked out by #{msg.src}. Shutting down."
 						Celluloid.shutdown
 					else
@@ -168,7 +168,7 @@ class Network
 	end
 
 	def get_nodes()
-		@status.keys + [@me]
+		@status.keys + [@localhost]
 	end
 
 	private
