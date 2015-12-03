@@ -100,7 +100,7 @@ class Router < Angelo::Base
 	delete '/device/:device' do 
 		device = params["device"]
 
-		if Celluloid::Actor[:redis].device_exist?(device)
+		if Celluloid::Actor[:redis].device_exists?(device)
 			Celluloid::Actor[:redis].delete_device(device)
 			halt 204, "Device deleted"
 		else

@@ -283,6 +283,8 @@ class Assets
 			node = node[dir]
 		}
 		node << Tree::TreeNode.new(device, true)
+	rescue RuntimeError => e
+		error "[ASSETS] Failed to add device: #{e}"
 	end
 
 	# Remove a dead device from the expanded tree

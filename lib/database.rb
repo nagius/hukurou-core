@@ -43,6 +43,9 @@ class Database
 				async.handle_event(message)
 			}
 		}
+	rescue ::Redis::CannotConnectError => e
+		error "Cannot connect to Redis: #{e}"
+		Celluloid.shutdown
 	end
 
 	def shutdown()
@@ -90,6 +93,10 @@ class Database
 		end
 			
 		@redis.zadd("last_seens", now, "#{device}:#{service}")
+	rescue IOError => e
+		warn "IOError with redis, reconnecting: #{e}"
+		@redis.client.reconnect
+		retry
 	end
 
 	def set_stale_state(device, service)
