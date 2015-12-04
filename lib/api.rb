@@ -46,17 +46,17 @@ class Router < Angelo::Base
 		state
 	end
 
-#	aget '/path*' do
-#		# Get the path as list of directory
-#		path = params['splat'][0].split('/').reject(&:empty?)
-#
-#		begin
-#			body json @assets.get_sub_dir(path)
-#		rescue PathNotFoundError
-#			ahalt 404, "Path not found"
-#		end
-#	end
-#
+	get '/path*' do
+		# Get the path as list of directory
+		path = params['splat'][0].split('/').reject(&:empty?)
+
+		begin
+			Celluloid::Actor[:assets].get_sub_dir(path)
+		rescue PathNotFoundError
+			halt 404, "Path not found"
+		end
+	end
+
 #	aget '/group*' do
 #		# Get the path as list of directory
 #		path = params['splat'][0].split('/').reject(&:empty?)
