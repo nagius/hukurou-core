@@ -85,12 +85,14 @@ class Workers
 	end
 
 	def stop_workers(device)
-		info "[WORKERS] Stopping workers for device #{device}..."
-		# TODO: kill running checks
-		@workers[device].each { |worker|
-			worker.cancel()
-		}
-		@workers.delete(device)
+		if @workers.include?(device)
+			info "[WORKERS] Stopping workers for device #{device}..."
+			# TODO: kill running checks
+			@workers[device].each { |worker|
+				worker.cancel()
+			}
+			@workers.delete(device)
+		end
 	end
 
 	def stop_all_workers()
