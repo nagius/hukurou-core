@@ -3,10 +3,6 @@ require 'celluloid/current'
 require 'angelo'
 
 
-# TODO: slat parameters
-# TODO: params sinatra style
-# TODO: raise notfound when unknown device
-
 class Router < Angelo::Base
 	content_type :json
 	report_errors!
@@ -57,40 +53,24 @@ class Router < Angelo::Base
 		end
 	end
 
-#	aget '/group*' do
-#		# Get the path as list of directory
-#		path = params['splat'][0].split('/').reject(&:empty?)
-#
-#		begin
-#			devices=@assets.get_devices_by_path(path)
-#			dl = devices.map { |device|
-#				d=@db.get_state(device)
-#				d.add_callback { |states|
-#					# Return a hash with the device name as key and list of states as value
-#					{ device => states }
-#				}
-#				d.add_errback { |e| ahalt 500, e.to_s }
-#
-#				d
-#			}
-#			
-#			d=EM::DeferrableList.new(dl)
-#			d.add_callback { |result|
-#				# Reject failed results
-#				result.select!{ |x| x[0] }
-#
-#				# Discard result status and keep the value
-#				result.map!{ |x| x[1] }
-#
-#				# Flatten the list of hashes into a single hash (empty hash if no result}
-#				hash = result.inject(:merge) || {}
-#				body json hash
-#			}
-#			d.add_errback { |e| ahalt 500, e.to_s }
-#		rescue PathNotFoundError
-#			ahalt 404, "Path not found"
-#		end
-#	end
+	get '/group*' do
+		# Get the path as list of directory
+		path = params['splat'][0].split('/').reject(&:empty?)
+
+		begin
+			devices = Celluloid::Actor[:assets].get_devices_by_path(path)
+			result = devices.map { |device|
+				states = Celluloid::Actor[:redis].get_states(device)
+				# Return a hash with the device name as key and list of states as value
+				{ device => states }
+			}
+			
+			# Flatten the list of hashes into a single hash (empty hash if no result}
+			result.inject(:merge) || {}
+		rescue PathNotFoundError
+			halt 404, "Path not found"
+		end
+	end
 
 	get '/tree' do
 		Celluloid::Actor[:assets].get_directory_tree

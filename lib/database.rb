@@ -153,8 +153,8 @@ class Database
 	def get_states(device)
 		@redis.scan_each(:match => "state:#{device}:*").map { |key|
 			service = key.split(":")[2]
-			get_state(device, service)
-		}
+			{ service => get_state(device, service) }.symbolize_keys
+		}.inject(:merge)
 	end
 
 	def get_devices()
