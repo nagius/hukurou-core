@@ -1,3 +1,13 @@
+GIT
+  remote: git://github.com/nagius/angelo.git
+  revision: 08785dc807a4dc59c16d8c10af96d285b92ae104
+  specs:
+    angelo (0.5.0pre)
+      mime-types (~> 2.4)
+      mustermann (~> 0.4)
+      reel (~> 0.5)
+      tilt (~> 2.0)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -8,11 +18,6 @@ GEM
       thread_safe (~> 0.3, >= 0.3.4)
       tzinfo (~> 1.1)
     addressable (2.3.8)
-    angelo (0.4.1)
-      mime-types (~> 2.4)
-      mustermann (~> 0.4)
-      reel (~> 0.5)
-      tilt (~> 2.0)
     celluloid (0.17.2)
       celluloid-essentials
       celluloid-extras
@@ -81,7 +86,7 @@ PLATFORMS
 
 DEPENDENCIES
   activesupport
-  angelo
+  angelo!
   celluloid
   celluloid-io
   celluloid-redis
