@@ -37,9 +37,6 @@ GEM
       timers (>= 4.1.1)
     celluloid-pool (0.20.5)
       timers (>= 4.1.1)
-    celluloid-redis (0.0.2)
-      celluloid-io (>= 0.13.0.pre)
-      redis
     celluloid-supervision (0.20.5)
       timers (>= 4.1.1)
     domain_name (0.5.25)
@@ -89,7 +86,7 @@ DEPENDENCIES
   angelo!
   celluloid
   celluloid-io
-  celluloid-redis
+  redis
   tree
 
 BUNDLED WITH

@@ -4,12 +4,11 @@
 # TODO: add history on pub/sub change state ?
 
 require 'celluloid/current'
-require 'celluloid/io'
-require "celluloid/redis"
+require "redis"
 require "json"
 
 class Database
-	include Celluloid::IO
+	include Celluloid
 	include Celluloid::Internals::Logger
 	finalizer :shutdown
 
@@ -20,17 +19,35 @@ class Database
 		STALE = "STALE"
 	end
 
+	class Listener
+		include Celluloid
+		finalizer :shutdown
+
+		def initialize()
+			@pubsub = Redis.new($CFG[:database])
+			async.listen
+		end
+
+		def listen
+			@pubsub.subscribe(:events) { |on|
+				on.message { |channel, message|
+					Celluloid::Actor[:redis].async.handle_event(message)
+				}
+			}
+		end
+
+		def shutdown
+			@pubsub.unsubscribe(:events)
+			@pubsub.quit
+		end
+	end
+
 	def initialize()
 		async.run
 	end
 
 	def run()
-		# Force celluloid driver for Redis
-		config = $CFG[:database].merge(:driver => "celluloid")
-
-		# Open two redis connection, one for data, one for events
-		@redis = ::Redis.new(config)
-		@pubsub = ::Redis.new(config)
+		@redis = Redis.new($CFG[:database])
 
 		# Check mimium version (needed for *scan features)
 		if @redis.info["redis_version"] < "2.8.0"
@@ -38,19 +55,13 @@ class Database
 			Celluloid.shutdown
 		end
 
-		@pubsub.subscribe(:events) { |on|
-			on.message { |channel, message|
-				async.handle_event(message)
-			}
-		}
-	rescue ::Redis::CannotConnectError => e
+		Listener.supervise
+	rescue Redis::CannotConnectError => e
 		error "Cannot connect to Redis: #{e}"
 		Celluloid.shutdown
 	end
 
 	def shutdown()
-		@pubsub.unsubscribe(:events)
-		#@pubsub.quit  # This crash with a <NoMethodError: undefined method `disconnect'> Bug ?
 		@redis.quit
 	end
 
@@ -323,6 +334,31 @@ class Database
 		}
 	end
 
+	def handle_event(event)
+		data = JSON.parse(event, :symbolize_names => true)
+		debug "[REDIS] Received event #{data}"
+
+		case data[:event]
+			when "device_added"
+				device = data[:device]
+				raise MessageCorruptedError, "#{data}" if device.nil?
+
+				info "[REDIS] Notified of new device: #{device}"
+				Celluloid::Actor[:assets].async.add_device(device)
+				Celluloid::Actor[:workers].async.add_device(device)
+			when "device_deleted"
+				device = data[:device]
+				raise MessageCorruptedError, "#{data}" if device.nil?
+
+				info "[REDIS] Notified of device deleted: #{device}"
+				Celluloid::Actor[:assets].async.delete_device(device)
+				Celluloid::Actor[:workers].async.delete_device(device)
+		end
+
+	rescue JSON::ParserError, MessageCorruptedError => e
+		warn "[REDIS] Received corrupted message: #{e}"
+	end
+
 	private
 
 		def state_changed(key_state)
@@ -360,30 +396,6 @@ class Database
 			@redis.del(key_state)
 		end
 
-		def handle_event(event)
-			data = JSON.parse(event, :symbolize_names => true)
-			debug "[REDIS] Received event #{data}"
-
-			case data[:event]
-				when "device_added"
-					device = data[:device]
-					raise MessageCorruptedError, "#{data}" if device.nil?
-
-					info "[REDIS] Notified of new device: #{device}"
-					Celluloid::Actor[:assets].async.add_device(device)
-					Celluloid::Actor[:workers].async.add_device(device)
-				when "device_deleted"
-					device = data[:device]
-					raise MessageCorruptedError, "#{data}" if device.nil?
-
-					info "[REDIS] Notified of device deleted: #{device}"
-					Celluloid::Actor[:assets].async.delete_device(device)
-					Celluloid::Actor[:workers].async.delete_device(device)
-			end
-
-		rescue JSON::ParserError, MessageCorruptedError => e
-			warn "[REDIS] Received corrupted message: #{e}"
-		end
 end
 
 class Database::MessageCorruptedError < RuntimeError
