@@ -1,8 +1,6 @@
 # TODO: document datamodel
 # TODO: YARD documentation
 
-# TODO: add history on pub/sub change state ?
-
 require 'celluloid/current'
 require "redis"
 require "json"
@@ -17,6 +15,8 @@ class Database
 		ERR = "ERROR"
 		WARN = "WARN"
 		STALE = "STALE"
+		MUTED = "MUTED"		# These two states are only used for History and Pubsub
+		ACKED = "ACKED"		# They are not in DB
 	end
 
 	class Listener
@@ -86,7 +86,9 @@ class Database
 			# New device
 			@redis.mapped_hmset(key_state, data)
 			add_device(device)
-			# TODO: add history
+			
+			# Push first state to history
+			@redis.lpush("history:#{device}:#{service}", {:state => state, :when => now}.to_json)
 		else
 			if @redis.hget(key_state, :state) == state
 				# Same state
@@ -94,12 +96,8 @@ class Database
 			else
 				# State change
 				@redis.mapped_hmset(key_state, data)
-
-				# Cancel acknowledge
 				cancel_ack(key_state)
-
-				state_changed(key_state)
-				# TODO: add history
+				state_changed(key_state, state)
 			end
 		end
 			
@@ -117,7 +115,7 @@ class Database
 			info "[REDIS] Detected stale state: #{device} #{service}"
 			@redis.hmset(key_state, :state, State::STALE, :starts_at, Time.now.to_i)
 			cancel_ack(key_state)
-			state_changed(key_state)
+			state_changed(key_state, State::STALE)
 		end
 	end
 
@@ -198,6 +196,11 @@ class Database
 			@redis.zrem("last_seens", key[0])
 		}
 
+		# Purge history
+		@redis.scan_each(:match => "history:#{device}:*") { |key_history|
+			@redis.del(key_history)
+		}
+
 		@redis.publish(:events, {:event => "device_deleted", :device => device}.to_json)
 	end
 
@@ -223,6 +226,8 @@ class Database
 
 			@redis.mapped_hmset("ack:#{id}", ack)
 			@redis.hset(key_state, :ack_id, id)
+			
+			state_changed(key_state, State::ACKED)
 
 			id	# Return the id of the created ack record
 		else
@@ -261,8 +266,7 @@ class Database
 					@redis.hset(key_state, :mute_id, id)
 
 					# Only trigger state changed if it wasn't already muted
-					state_changed(key_state) unless already_muted
-					# TODO: add history
+					state_changed(key_state, State::MUTED) unless already_muted
 				end
 			}
 		}
@@ -326,7 +330,8 @@ class Database
 			if all_muted_states[key_state].nil?
 				# No others mute, unmute this state
 				@redis.hdel(key_state, :mute_id)
-				state_changed(key_state)
+				state = @redis.hget(key_state, :state)
+				state_changed(key_state, state)
 			else
 				# Update mute reference to the previous one
 				@redis.hset(key_state, :mute_id, all_muted_states[key_state])
@@ -361,11 +366,16 @@ class Database
 
 	private
 
-		def state_changed(key_state)
-			info "[REDIS] State change for #{key_state}"
-
+		def state_changed(key_state, new_state)
 			(_, device, service) = key_state.split(':')
-			@redis.publish(:events, {:event => "state_change", :device => device, :service => service }.to_json)
+
+			info "[REDIS] State changed to #{new_state} for #{device} #{service}"
+
+			@redis.publish(:events, {:event => "state_change", :device => device, :service => service, :state => new_state }.to_json)
+
+			# Save to history
+			# TODO: add TTL
+			@redis.lpush("history:#{device}:#{service}", {:state => new_state, :when => Time.now.to_i}.to_json)
 		end
 
 		def cancel_ack(key_state)
@@ -374,6 +384,9 @@ class Database
 				info "[REDIS] Acknowledge ##{ack_id} cancelled for #{key_state}"
 				@redis.hdel(key_state, :ack_id)	
 				@redis.del("ack:#{ack_id}")
+
+				state = @redis.hget(key_state, :state)
+				state_changed(key_state, state)
 			end
 		end
 
