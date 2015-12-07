@@ -110,6 +110,7 @@ class Assets
 		@default_device=nil
 		@expanded_tree=nil
 
+		async.setup_signal
 		async.load_assets
 	end
 
@@ -137,6 +138,28 @@ class Assets
 		rescue StandardError => e
 			error "[ASSETS] Failed to reload assets, system may be in an incoherent state : #{e}"
 		end
+	end
+
+	def handle_signal(sig)
+		debug "[ASSETS] Signal #{sig} received."
+		case sig
+			when :HUP
+				reload
+		end
+	end	
+
+	def setup_signal()
+		Thread.main[:signal_queue] = []
+
+		trap(:HUP) do
+			Thread.main[:signal_queue] << :HUP
+		end
+
+		every(1) {
+			while sig = Thread.main[:signal_queue].shift
+				async.handle_signal(sig)
+			end
+		}
 	end
 
 	def create_subtree(path, config = {})

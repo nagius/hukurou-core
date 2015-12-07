@@ -84,11 +84,6 @@ class Supervisor <  Celluloid::Supervision::Container
 	supervise type: API,	 	as: :api
 end
 
-trap "HUP" do
-	# FIXME: this doesn't work
-	Celluloid::Actor[:assets].async.reload()
-end
-
 # Start main loop
 Celluloid.logger.info "[CORE] Starting application..."
 Supervisor.run
