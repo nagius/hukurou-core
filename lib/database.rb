@@ -97,6 +97,12 @@ class Database
 				# State change
 				@redis.mapped_hmset(key_state, data)
 				cancel_ack(key_state)
+
+				if state == State::OK
+					# Reset root cause if incident has cleared
+					@redis.hdel(key_state, :cause)
+				end
+
 				state_changed(key_state, state)
 			end
 		end
