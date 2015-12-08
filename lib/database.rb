@@ -79,7 +79,6 @@ class Database
 			:message => message,
 			:last_seen => now,
 			:starts_at => now,
-			:event => false
 		}
 
 		if not @redis.sismember("devices", device)
@@ -98,9 +97,15 @@ class Database
 				@redis.mapped_hmset(key_state, data)
 				cancel_ack(key_state)
 
-				if state == State::OK
-					# Reset root cause if incident has cleared
-					@redis.hdel(key_state, :cause)
+				case state
+					when State::OK
+						# Reset root cause as incident has cleared
+						@redis.hdel(key_state, :cause)
+
+						# Remove from fautly list
+						@redis.srem("faulty_states", key_state)
+					when State::WARN, State::ERR, State::STALE
+						@redis.sadd("faulty_states", key_state)
 				end
 
 				state_changed(key_state, state)
@@ -121,6 +126,7 @@ class Database
 			info "[REDIS] Detected stale state: #{device} #{service}"
 			@redis.hmset(key_state, :state, State::STALE, :starts_at, Time.now.to_i)
 			cancel_ack(key_state)
+			@redis.sadd("faulty_states", key_state)
 			state_changed(key_state, State::STALE)
 		end
 	end
@@ -170,6 +176,13 @@ class Database
 			service = key.split(":")[2]
 			{ service => get_state(device, service) }.symbolize_keys
 		}.inject(:merge)
+	end
+
+	def get_faulty_services()
+		@redis.sscan_each("faulty_states").map { |key_state|
+			(_, device, service) = key_state.split(":")
+			[device, service]
+		}
 	end
 
 	def get_devices()
@@ -400,6 +413,9 @@ class Database
 			# Delete acknowledge
 			ack_id = @redis.hget(key_state, :ack_id)
 			@redis.del("ack:#{ack_id}") unless ack_id.nil?
+
+			# Delete fault tracking
+			@redis.srem("faulty_states", key_state)
 
 			# Delete state from mute list
 			mute_id = @redis.hget(key_state, :mute_id)

@@ -34,6 +34,11 @@ class Router < Angelo::Base
 		end
 	end
 
+	# Get a list of faulty services
+	get '/services/faulty' do
+		Celluloid::Actor[:redis].get_faulty_services()
+	end
+
 	# Get check results for specific device
 	get '/state/:device/:service' do 
 		state = Celluloid::Actor[:redis].get_state(params["device"], params["service"])
