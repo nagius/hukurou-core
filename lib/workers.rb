@@ -42,7 +42,7 @@ class Workers
 	def check_stales()
 		debug "[WORKERS] Checking stale states"
 
-		states = Celluloid::Actor[:redis].get_stale_states($CFG[:core][:stale_age]) # TODO: put this on config file
+		states = Celluloid::Actor[:redis].get_stale_services($CFG[:core][:stale_age]) # TODO: put this on config file
 		states.each { |device, service|
 			if is_local?(device)
 				Celluloid::Actor[:redis].set_stale_state(device, service)

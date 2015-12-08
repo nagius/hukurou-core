@@ -131,7 +131,7 @@ class Database
 		end
 	end
 
-	def get_stale_states(age)
+	def get_stale_services(age)
 		@redis.zrangebyscore("last_seens", 0, (Time.now.to_i - age)).map { |key|
 			key.split(":")
 		}
@@ -164,10 +164,10 @@ class Database
 		end
 	end
 
-	def get_all_states()
-		@redis.scan_each(:match => "state:*").map { |key|
-			device, service = key.split(":")[1,2]
-			{ :device => device, :service => service }
+	def get_all_services()
+		@redis.scan_each(:match => "state:*").map { |key_state|
+			(_, device, service) = key_state.split(":")
+			[device, service]
 		}
 	end
 
