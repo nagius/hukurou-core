@@ -102,7 +102,7 @@ module Message
 		end
 	end
 
-	class ParseError < RuntimeError
+	class ParseError < StandardError
 	end
 end
 

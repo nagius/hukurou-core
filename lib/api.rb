@@ -20,7 +20,11 @@ class Router < Angelo::Base
 
 	# Get checks definition for the device
 	get '/device/:device/config' do
-		Celluloid::Actor[:assets].get_device(params["device"]).get_services()
+		begin
+			Celluloid::Actor[:assets].get_services(params["device"])
+		rescue Assets::SubstitutionError => e
+			halt 500, "Configuration error: #{e}"
+		end
 	end
 
 	# Get the device states
@@ -53,7 +57,7 @@ class Router < Angelo::Base
 
 		begin
 			Celluloid::Actor[:assets].get_sub_dir(path)
-		rescue PathNotFoundError
+		rescue Assets::PathNotFoundError
 			halt 404, "Path not found"
 		end
 	end
@@ -72,7 +76,7 @@ class Router < Angelo::Base
 			
 			# Flatten the list of hashes into a single hash (empty hash if no result}
 			result.inject(:merge) || {}
-		rescue PathNotFoundError
+		rescue Assets::PathNotFoundError
 			halt 404, "Path not found"
 		end
 	end

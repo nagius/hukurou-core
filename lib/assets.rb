@@ -95,7 +95,7 @@ class Device
 		@path[0]
 	end
 	
-	def get_services
+	def get_services()
 		@config[:services]
 	end
 end
@@ -220,8 +220,25 @@ class Assets
 		return found.first
 	end
 
-	# TODO: rename by get_config() ?
-	def get_device(name)
+	def get_services(name)
+		# Duplicate services hash to not modify original device object
+		services = get_device_by_name(name).get_services().deep_dup
+
+		services.each_value { |config|
+			# Add hostname and expand variable
+			config[:hostname] = name
+			config[:command] = config[:command] % config
+		}
+
+		return services
+	rescue KeyError => e
+		msg = "Cannot expand variable for device #{name}: #{e}"
+
+		warn "[ASSETS] #{msg}"
+		abort SubstitutionError.new(msg)
+	end
+
+	def get_device_by_name(name)
 		node = get_node(name)
 		return node.nil? ? @default_device : node.content
 	end
@@ -301,12 +318,12 @@ class Assets
 
 		node = @expanded_tree
 
-		get_device(device).path.each { |dir|
+		get_device_by_name(device).path.each { |dir|
 			# Walk down the tree
 			node = node[dir]
 		}
 		node << Tree::TreeNode.new(device, true)
-	rescue RuntimeError => e
+	rescue StandardError => e
 		error "[ASSETS] Failed to add device: #{e}"
 	end
 
@@ -319,9 +336,12 @@ class Assets
 			end
 		}
 	end
-end
 
-class PathNotFoundError < StandardError
+	class PathNotFoundError < StandardError
+	end
+
+	class SubstitutionError < StandardError
+	end
 end
 
 

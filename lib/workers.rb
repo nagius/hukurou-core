@@ -74,7 +74,7 @@ class Workers
 		info "[WORKERS] Starting workers for device #{device}..."
 		@workers[device]=Array.new
 
-		services = Celluloid::Actor[:assets].get_device(device).get_services()
+		services = Celluloid::Actor[:assets].get_services(device)
 		services.each_pair do |service, conf|
 			if conf[:remote]
 				@workers[device] << every(conf[:interval]) do
@@ -82,6 +82,8 @@ class Workers
 				end
 			end
 		end
+	rescue Assets::SubstitutionError => e
+		error "[WORKERS] Failed to start workers: #{e}"
 	end
 
 	def stop_workers(device)
@@ -156,11 +158,7 @@ class Worker
 		debug "[WORKERS] Checking #{service} on #{device} with #{conf}"
 
 		begin
-			# Do variable expantion
-			# TODO: add hostname and IP
-			command = conf[:command] % conf
-
-			output = ::IO.popen(command, :err=>[:child, :out]) do |io| 
+			output = ::IO.popen(conf[:command], :err=>[:child, :out]) do |io| 
 				begin
 					Timeout.timeout($CFG[:timeout]) { io.read }
 				rescue Timeout::Error
@@ -184,8 +182,6 @@ class Worker
 		rescue StandardError => e
 			# Select the good error message
 			message = case e
-				when KeyError
-					"Cannot expand variable for #{conf[:command]}: #{e}"
 				when Timeout::Error
 					"Timeout running #{command}"
 				else
