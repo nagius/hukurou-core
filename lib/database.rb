@@ -12,7 +12,7 @@ class Database
 
 	class State
 		OK = "OK"
-		ERR = "ERROR"
+		CRIT = "CRIT"
 		WARN = "WARN"
 		STALE = "STALE"
 		MUTED = "MUTED"		# These two states are only used for History and Pubsub
@@ -104,7 +104,7 @@ class Database
 
 						# Remove from fautly list
 						@redis.srem("faulty_states", key_state)
-					when State::WARN, State::ERR, State::STALE
+					when State::WARN, State::CRIT, State::STALE
 						@redis.sadd("faulty_states", key_state)
 				end
 

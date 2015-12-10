@@ -27,7 +27,8 @@ def load_config
 		},
         :debug => false,
 		:assets => "/etc/hukurou/assets",
-		:services => "/etc/hukurou/services.yml"
+		:services => "/etc/hukurou/services.yml",
+		:timeout => 30
     }
 
     # Read CLI options

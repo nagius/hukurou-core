@@ -162,7 +162,7 @@ class Worker
 
 			output = ::IO.popen(command, :err=>[:child, :out]) do |io| 
 				begin
-					Timeout.timeout(2) { io.read }
+					Timeout.timeout($CFG[:timeout]) { io.read }
 				rescue Timeout::Error
 					Process.kill 9, io.pid
 					raise
@@ -174,8 +174,10 @@ class Worker
 					state = Database::State::OK
 				when 1
 					state = Database::State::WARN
+				when 3
+					state = Database::State::STALE
 				else
-					state = Database::State::ERR
+					state = Database::State::CRIT
 			end
 
 			Celluloid::Actor[:redis].set_state(device, service, state, output)
@@ -191,7 +193,7 @@ class Worker
 			end
 
 			warn "[WORKERS] #{message}"
-			Celluloid::Actor[:redis].set_state(device, service, Database::State::ERR, message)
+			Celluloid::Actor[:redis].set_state(device, service, Database::State::CRIT, message)
 		end
 	rescue DeadActorError
 		warn "[WORKERS] Redis actor is dead."
