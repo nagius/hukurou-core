@@ -145,6 +145,7 @@ class Assets
 		case sig
 			when :HUP
 				reload
+				Celluloid::Actor[:workers].restart_all_workers()
 		end
 	end	
 
