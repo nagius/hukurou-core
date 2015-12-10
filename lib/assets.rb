@@ -111,7 +111,7 @@ class Assets
 		@expanded_tree=nil
 
 		async.setup_signal
-		async.load_assets
+		async.reload
 	end
 
 	def load_assets()
@@ -249,12 +249,12 @@ class Assets
 		#
 		# TODO: refactor this
 		tree = @expanded_tree
-		raise PathNotFoundError if tree.nil?
+		abort PathNotFoundError.new if tree.nil?
 
 		# Walk down the tree
 		path.each{ |dir| 
 			tree = tree[dir] 
-			raise PathNotFoundError if tree.nil?
+			abort PathNotFoundError.new if tree.nil?
 		}
 
 		# Get all direct elements
@@ -270,7 +270,7 @@ class Assets
 		# Walk down the tree
 		path.each{ |dir| 
 			tree = tree[dir] 
-			raise PathNotFoundError if tree.nil?
+			abort PathNotFoundError.new if tree.nil?
 		}
 
 		# Get all direct elements

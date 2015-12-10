@@ -183,16 +183,16 @@ class Worker
 			# Select the good error message
 			message = case e
 				when Timeout::Error
-					"Timeout running #{command}"
+					"Timeout running #{conf[:command]}"
 				else
-					"Failed to run #{command}: #{e}"
+					"Failed to run #{conf[:command]}: #{e}"
 			end
 
 			warn "[WORKERS] #{message}"
 			Celluloid::Actor[:redis].set_state(device, service, Database::State::CRIT, message)
 		end
 	rescue DeadActorError
-		warn "[WORKERS] Redis actor is dead."
+		warn "[WORKERS] Redis actor is dead. Are we shutting down ?"
 	end
 end
 
