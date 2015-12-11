@@ -337,13 +337,13 @@ module Hukurou
 				}
 			end
 
-			class PathNotFoundError < StandardError
-			end
-
-			class SubstitutionError < StandardError
-			end
 		end
 	end
 end
 
+class Hukurou::Core::Assets::PathNotFoundError < StandardError
+end
+
+class Hukurou::Core::Assets::SubstitutionError < StandardError
+end
 # vim: ts=4:sw=4:ai:noet

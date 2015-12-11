@@ -103,9 +103,11 @@ module Hukurou
 				end
 			end
 
-			class ParseError < StandardError
-			end
 		end
 	end
 end
+
+class Hukurou::Core::Message::ParseError < StandardError
+end
+
 # vim: ts=4:sw=4:ai:noet

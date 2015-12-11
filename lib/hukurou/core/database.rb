@@ -436,9 +436,11 @@ module Hukurou
 					@redis.del(key_state)
 				end
 
-			class MessageCorruptedError < RuntimeError
-			end
 		end
 	end
 end
+
+class Hukurou::Core::Database::MessageCorruptedError < RuntimeError
+end
+
 # vim: ts=4:sw=4:ai:noet
