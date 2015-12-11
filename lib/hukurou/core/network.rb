@@ -138,13 +138,13 @@ module Hukurou
 
 					start_heartbeat()
 					start_watchdog()
-					notify_node_change()
+					info "[NET] Cluster joined with members: #{@members.keys}"
 
-					# Return the list of cluster's member (excluding local node)
-					@members.keys
-					info "[NET] Cluster joined with members: #{@members}"
-
+					# Start API web server
 					Celluloid::Actor[:api].async.start
+
+					# (re)start others component
+					notify_node_change()
 				end
 			end
 
