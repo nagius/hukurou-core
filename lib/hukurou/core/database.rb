@@ -22,6 +22,7 @@ module Hukurou
 
 			class Listener
 				include Celluloid
+				include Celluloid::Internals::Logger
 				finalizer :shutdown
 
 				def initialize()
@@ -40,6 +41,8 @@ module Hukurou
 				def shutdown
 					@pubsub.unsubscribe(:events)
 					@pubsub.quit
+				rescue StandardError => e
+					debug "[REDIS] Finalizer crashed: #{e}"
 				end
 			end
 
@@ -64,6 +67,8 @@ module Hukurou
 
 			def shutdown()
 				@redis.quit
+			rescue StandardError => e
+				debug "[REDIS] Finalizer crashed: #{e}"
 			end
 
 			def set_state(device, service, state, message)

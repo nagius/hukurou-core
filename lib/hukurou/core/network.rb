@@ -27,6 +27,8 @@ module Hukurou
 
 			def shutdown
 				leave_cluster
+			rescue StandardError => e
+				debug "[NET] Finalizer crashed: #{e}"
 			end
 
 			def listen()

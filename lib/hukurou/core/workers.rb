@@ -26,6 +26,8 @@ module Hukurou
 
 			def shutdown()
 				stop_all_workers
+			rescue StandardError => e
+				debug "[WORKERS] Finalizer crashed: #{e}"
 			end
 
 			def dispatch(device)
