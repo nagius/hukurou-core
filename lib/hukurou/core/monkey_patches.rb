@@ -1,4 +1,14 @@
 
+# https://github.com/celluloid/celluloid-io/issues/161
+module Celluloid
+	module IO
+		class UDPSocket
+			# Forward setsockopt to allow broadcast packet
+			def_delegators :@socket, :setsockopt
+		end
+	end
+end
+
 
 # Clone of active_support/core_ext/hash/deep_merge.rb
 # But do not override +self+ if +other_value+ is nil

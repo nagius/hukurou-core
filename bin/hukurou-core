@@ -1,15 +1,14 @@
 #!/usr/bin/env ruby
 
-require 'celluloid/current'
+unless $:.include?(File.dirname(__FILE__) + "/../lib/")
+	$: << File.dirname(__FILE__) + "/../lib"
+end
+
+
 require 'yaml'
 require 'optparse'
-require_relative 'lib/monkey_patchs'
-require_relative 'lib/network'
-require_relative 'lib/database'
-require_relative 'lib/assets'
-require_relative 'lib/workers'
-require_relative 'lib/api'
 
+require 'hukurou/core'
 
 def load_config
     # Default configuration
@@ -70,7 +69,6 @@ def load_config
 
 end
 
-
 load_config
 
 # Setup logger 
@@ -78,11 +76,11 @@ load_config
 $CELLULOID_DEBUG = $CFG[:debug]
 
 class Supervisor <  Celluloid::Supervision::Container
-	supervise type: Database,	as: :redis
-	supervise type: Assets, 	as: :assets
-	supervise type: Workers,	as: :workers
-	supervise type: Network, 	as: :net
-	supervise type: API,	 	as: :api
+	supervise type: Hukurou::Core::Database,	as: :redis
+	supervise type: Hukurou::Core::Assets, 	as: :assets
+	supervise type: Hukurou::Core::Workers,	as: :workers
+	supervise type: Hukurou::Core::Network, 	as: :net
+	supervise type: Hukurou::Core::API,	 	as: :api
 end
 
 # Start main loop
