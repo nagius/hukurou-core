@@ -19,7 +19,7 @@ module Hukurou
 			def initialize(file, services, default_config = {})
 				# TODO: Add assert here file:Pathname, config:hash
 				@name = file.basename.to_s
-				@path = file.dirname.relative_path_from(Pathname.new($CFG[:assets])).to_s.split('/') 
+				@path = file.dirname.relative_path_from(Pathname.new(Config[:assets])).to_s.split('/') 
 
 				# Cleanup path from useless directory
 				@path.reject! { |dir| dir == "." }
@@ -115,15 +115,15 @@ module Hukurou
 
 			def load_assets()
 				begin
-					@services = YAML::load_file($CFG[:services]).deep_symbolize_keys
+					@services = YAML::load_file(Config[:services][:definitions]).deep_symbolize_keys
 				rescue Errno::ENOENT => e
-					raise "Can't read file #{$CFG[:services]}, check config variable :services : #{e}"
+					raise "Can't read file #{Config[:services][:definitions]}, check config variable :services : #{e}"
 				end
 
 				begin
-					@tree = create_subtree(Pathname.new($CFG[:assets]))
+					@tree = create_subtree(Pathname.new(Config[:assets]))
 				rescue Errno::ENOENT => e
-					raise "Can't parse directory #{$CFG[:assets]}, check config variable :assets : #{e}"
+					raise "Can't parse directory #{Config[:assets]}, check config variable :assets : #{e}"
 				end
 
 				devices = Celluloid::Actor[:redis].get_devices()

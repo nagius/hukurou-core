@@ -25,7 +25,7 @@ module Hukurou
 				finalizer :shutdown
 
 				def initialize()
-					@pubsub = Redis.new($CFG[:database])
+					@pubsub = Redis.new(Config[:redis])
 					async.listen
 				end
 
@@ -48,7 +48,7 @@ module Hukurou
 			end
 
 			def run()
-				@redis = Redis.new($CFG[:database])
+				@redis = Redis.new(Config[:redis])
 
 				# Check mimium version (needed for *scan features)
 				if @redis.info["redis_version"] < "2.8.0"

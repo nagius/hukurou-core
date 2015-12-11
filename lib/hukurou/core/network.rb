@@ -18,7 +18,7 @@ module Hukurou
 				@status={}						# List of remote nodes with timestamps
 
 				@socket = Celluloid::IO::UDPSocket.new
-				@socket.bind("0.0.0.0", 6666)
+				@socket.bind(Config[:core][:listen], Config[:core][:port])
 				@socket.setsockopt(Socket::SOL_SOCKET, Socket::SO_BROADCAST, true)
 
 				async.listen
@@ -163,7 +163,7 @@ module Hukurou
 
 				def broadcast(msg)
 					# TODO assert msg is Message
-					@socket.send(msg.serialize(), 0, '<broadcast>', 6666)
+					@socket.send(msg.serialize(), 0, '<broadcast>', Config[:core][:port])
 				end
 
 				def reply(msg, host, port)

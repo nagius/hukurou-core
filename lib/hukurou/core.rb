@@ -4,6 +4,7 @@ require 'celluloid/current'
 require 'celluloid/io'
 
 require 'hukurou/core/monkey_patches'
+require 'hukurou/core/config'
 require 'hukurou/core/messages'
 require 'hukurou/core/network'
 require 'hukurou/core/database'

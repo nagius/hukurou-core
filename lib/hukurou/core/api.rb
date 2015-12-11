@@ -158,7 +158,7 @@ module Hukurou
 
 			def start
 				info "[API] Starting web server."
-				@server = Router.run($CFG[:api][:listen], $CFG[:api][:port])
+				@server = Router.run(Config[:api][:listen], Config[:api][:port])
 			end
 		end
 	end

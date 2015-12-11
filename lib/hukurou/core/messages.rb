@@ -39,11 +39,11 @@ module Hukurou
 			class JoinRequest < AbstractMessage
 				def initialize(msg=nil)
 					super
-					@data=$CFG[:shared_secret] if msg.nil?
+					@data=Config[:secret] if msg.nil?
 				end
 
 				def token_ok?
-					@data==$CFG[:shared_secret]
+					@data==Config[:secret]
 				end
 			end
 

@@ -2,9 +2,6 @@
 require 'timeout'
 require 'socket'
 
-# TODO: put pool size on config
-# TODO: put timeout on config
-
 module Hukurou
 	module Core
 		class Workers
@@ -20,10 +17,11 @@ module Hukurou
 			end
 
 			def run
-				@watchdog = every($CFG[:core][:stale_freq]) { 
+				@watchdog = every(60) { 
+					# Check for stale states every minutes
 					async.check_stales()
 				}
-				@pool = Worker.pool(size: 20) 	# Pool of thread to execute checks
+				@pool = Worker.pool(size: Config[:core][:pool_size]) 	# Pool of thread to execute checks
 			end
 
 			def shutdown()
@@ -43,7 +41,7 @@ module Hukurou
 			def check_stales()
 				debug "[WORKERS] Checking stale states"
 
-				states = Celluloid::Actor[:redis].get_stale_services($CFG[:core][:stale_age]) # TODO: put this on config file
+				states = Celluloid::Actor[:redis].get_stale_services(Config[:services][:max_age])
 				states.each { |device, service|
 					if is_local?(device)
 						Celluloid::Actor[:redis].set_stale_state(device, service)
@@ -161,7 +159,7 @@ module Hukurou
 				begin
 					output = ::IO.popen(conf[:command], :err=>[:child, :out]) do |io| 
 						begin
-							Timeout.timeout($CFG[:timeout]) { io.read }
+							Timeout.timeout(Config[:services][:timeout]) { io.read }
 						rescue Timeout::Error
 							Process.kill 9, io.pid
 							raise
