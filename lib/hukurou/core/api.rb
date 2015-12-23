@@ -40,7 +40,14 @@ module Hukurou
 
 			# Get a list of faulty services
 			get '/services/faulty' do
-				Celluloid::Actor[:redis].get_faulty_services()
+				services = Hash.new([])
+				
+				Celluloid::Actor[:redis].get_faulty_services().each { |device, service|
+					# Convert nested Array to Hash with Array 
+					services[device] += [service]
+				}
+
+				services
 			end
 
 			# Get check results for specific device
