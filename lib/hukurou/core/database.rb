@@ -303,7 +303,8 @@ module Hukurou
 			def get_mutes()
 				mutes = []
 				@redis.scan_each(:match => "mute:*:obj") { |key|
-					mutes << get_mute(key)
+					mute = get_mute(key)
+					mutes << mute unless mute.nil?
 				}
 
 				mutes
@@ -328,6 +329,9 @@ module Hukurou
 				else
 					nil
 				end
+			rescue JSON::ParserError => e
+				warn "[REDIS] Corrupted data in mute table: #{e}"
+				nil
 			end
 
 			def delete_mute(id)
