@@ -1,10 +1,21 @@
 
 require 'angelo'
 
+module Angelo
+	class Base
+		module DSL
+			def headers hdr
+				Responder.default_headers = Responder.default_headers.merge hdr
+			end
+		end
+	end
+end
+
 module Hukurou
 	module Core
 		class Router < Angelo::Base
 			content_type :json
+			headers "Access-Control-Allow-Origin" => "*"
 			report_errors!
 
 			def validate!(keys)	
