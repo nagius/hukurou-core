@@ -15,13 +15,20 @@ module Hukurou
 	module Core
 		class Router < Angelo::Base
 			content_type :json
-			headers "Access-Control-Allow-Origin" => "*"
+			headers "Access-Control-Allow-Origin" => "*"  # Allow CORS queries
 			report_errors!
 
 			def validate!(keys)	
 				keys.each do |param|
 					halt 400, "Parameter '#{param}' missing." unless params.has_key? param
 				end
+			end
+
+			# Allow all HTTP verbs for all CORS preflight queries
+			options '*' do
+				headers "Access-Control-Allow-Methods" => "POST, GET, PUT, DELETE, OPTIONS"
+				headers "Access-Control-Allow-Headers" => "Content-Type"
+				halt 200
 			end
 				
 			# List devices 
