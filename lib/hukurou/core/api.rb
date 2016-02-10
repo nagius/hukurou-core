@@ -151,8 +151,9 @@ module Hukurou
 			end
 
 			# Create a new maintenance
-			post '/maintenance' do
+			post '/mutes' do
 				validate!(%w[device service start end message user])
+				# TODO: expand device and service list here ?
 				
 				begin
 					starts_at = Time.parse(params['start'])
@@ -161,10 +162,29 @@ module Hukurou
 					halt 400, "Wrong time format: #{e}"
 				end
 				
-				Celluloid::Actor[:redis].set_mute(params['device'], params['service'], params['message'], params['user'], starts_at, ends_at)
-				halt 201, "Maintenance saved"
+				Celluloid::Actor[:redis].set_mute([params['device']], [params['service']], params['message'], params['user'], starts_at, ends_at)
+				halt 201, "Mute saved"
 			end
 
+			# Get the list of all mutes
+			get '/mutes' do
+				Celluloid::Actor[:redis].get_mutes
+			end
+
+			# Get a specific mute
+			get '/mutes/:id' do
+				id = params["id"].to_i
+
+				Celluloid::Actor[:redis].get_mute(id)
+			end
+
+			# Delete a mute
+			delete '/mutes/:id' do 
+				id = params["id"].to_i
+
+				Celluloid::Actor[:redis].delete_mute(id)
+				halt 204, "Mute deleted"
+			end
 		end
 
 		class API
