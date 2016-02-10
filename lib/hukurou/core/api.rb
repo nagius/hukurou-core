@@ -152,9 +152,17 @@ module Hukurou
 
 			# Create a new maintenance
 			post '/mutes' do
-				validate!(%w[device service start end message user])
-				# TODO: expand device and service list here ?
+				validate!(%w[devices services start end message user])
+				# TODO: expand device and service list here or in GUI ?
 				
+				# Validate params that need to be arrays
+				%w[devices services].each { |param|
+					if not params[param].is_a?(Array) or params[param].empty?
+						halt 400, "Parameter '#{param}' must be a non empty array"
+					end
+				}
+
+				# Convert times to timestamps
 				begin
 					starts_at = Time.parse(params['start'])
 					ends_at = Time.parse(params['end'])
@@ -162,7 +170,7 @@ module Hukurou
 					halt 400, "Wrong time format: #{e}"
 				end
 				
-				Celluloid::Actor[:redis].set_mute([params['device']], [params['service']], params['message'], params['user'], starts_at, ends_at)
+				Celluloid::Actor[:redis].set_mute(params['devices'], params['services'], params['message'], params['user'], starts_at, ends_at)
 				halt 201, "Mute saved"
 			end
 
