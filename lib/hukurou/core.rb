@@ -11,5 +11,6 @@ require 'hukurou/core/database'
 require 'hukurou/core/assets'
 require 'hukurou/core/workers'
 require 'hukurou/core/api'
+require 'hukurou/core/signals'
 
 # vim: ts=4:sw=4:ai:noet

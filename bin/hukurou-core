@@ -16,6 +16,7 @@ class Supervisor <  Celluloid::Supervision::Container
 	supervise type: Hukurou::Core::Workers,		as: :workers
 	supervise type: Hukurou::Core::Network, 	as: :net
 	supervise type: Hukurou::Core::API,	 		as: :api
+	supervise type: Hukurou::Core::Signals,		as: :signals
 end
 
 # Start main loop
