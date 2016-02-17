@@ -32,7 +32,7 @@ module Hukurou
 
 			def validate!(keys)	
 				keys.each do |param|
-					halt 400, "Parameter '#{param}' missing." unless params.has_key? param
+					halt 400, { :message => "Parameter #{param} is missing." } unless params.has_key? param
 				end
 			end
 				
@@ -47,7 +47,7 @@ module Hukurou
 						:services => Celluloid::Actor[:assets].get_services(params["device"])
 					}
 				rescue Assets::SubstitutionError => e
-					halt 500, "Configuration error: #{e}"
+					halt 500, { :message => "Configuration error: #{e}" }
 				end
 			end
 
@@ -66,7 +66,7 @@ module Hukurou
 						:services => Celluloid::Actor[:redis].get_states(device)
 					}
 				else
-					halt 404, "Device not found"
+					halt 404, { :message => "Device not found" }
 				end
 			end
 
@@ -76,9 +76,9 @@ module Hukurou
 
 				if Celluloid::Actor[:redis].device_exists?(device)
 					Celluloid::Actor[:redis].delete_device(device)
-					halt 204, "Device deleted"
+					halt 204
 				else
-					halt 404, "Device not found"
+					halt 404, { :message => "Device not found" }
 				end
 			end
 
@@ -87,10 +87,10 @@ module Hukurou
 				device = params["device"]
 
 				if Celluloid::Actor[:redis].device_exists?(device)
-					halt 200, "Device already exists"
+					halt 204
 				else
 					Celluloid::Actor[:redis].add_device(device)
-					halt 201, "Device added"
+					halt 201
 				end
 			end
 
@@ -112,7 +112,7 @@ module Hukurou
 			# Get state of a specific device and service
 			get '/states/:device/:service' do 
 				state = Celluloid::Actor[:redis].get_state(params["device"], params["service"])
-				halt 404, "Device or service not found" if state.nil?
+				halt 404, { :message => "Device or service not found" } if state.nil?
 				
 				state
 			end
@@ -122,7 +122,7 @@ module Hukurou
 				validate!(%w[device service state message])
 
 				Celluloid::Actor[:redis].set_state(params["device"], params["service"], params['state'], params['message'])
-				halt 201, "State saved"
+				halt 201
 			end
 
 			# Acknowledge an alert
@@ -130,7 +130,7 @@ module Hukurou
 				validate!(%w[device service message user])
 
 				Celluloid::Actor[:redis].ack_state(params["device"], params["service"], params['message'], params['user'])
-				halt 201, "Alert acknowledged"
+				halt 201
 			end
 
 			# Routes to manage groups and directories
@@ -143,7 +143,7 @@ module Hukurou
 				begin
 					Celluloid::Actor[:assets].get_sub_dir(path)
 				rescue Assets::PathNotFoundError
-					halt 404, "Path not found"
+					halt 404, { :message => "Path not found" }
 				end
 			end
 
@@ -160,7 +160,7 @@ module Hukurou
 						}
 					}
 				rescue Assets::PathNotFoundError
-					halt 404, "Path not found"
+					halt 404, { :message => "Path not found" }
 				end
 			end
 
@@ -179,7 +179,7 @@ module Hukurou
 				# Validate params that need to be arrays
 				%w[devices services].each { |param|
 					if not params[param].is_a?(Array) or params[param].empty?
-						halt 400, "Parameter '#{param}' must be a non empty array"
+						halt 400, { :message => "Parameter #{param} must be a non empty array" }
 					end
 				}
 
@@ -188,11 +188,11 @@ module Hukurou
 					starts_at = Time.parse(params['start'])
 					ends_at = Time.parse(params['end'])
 				rescue ArgumentError => e
-					halt 400, "Wrong time format: #{e}"
+					halt 400, { :message => "Wrong time format: #{e}" }
 				end
 				
 				Celluloid::Actor[:redis].set_mute(params['devices'], params['services'], params['message'], params['user'], starts_at, ends_at)
-				halt 201, "Mute saved"
+				halt 201
 			end
 
 			# Get the list of all mutes
@@ -212,7 +212,7 @@ module Hukurou
 				id = params["id"].to_i
 
 				Celluloid::Actor[:redis].delete_mute(id)
-				halt 204, "Mute deleted"
+				halt 204
 			end
 		end
 
