@@ -133,7 +133,6 @@ module Hukurou
 				halt 201, "Alert acknowledged"
 			end
 
-
 			# Routes to manage groups and directories
 			# #######################################
 
@@ -154,14 +153,12 @@ module Hukurou
 
 				begin
 					devices = Celluloid::Actor[:assets].get_devices_by_path(path)
-					result = devices.map { |device|
-						states = Celluloid::Actor[:redis].get_states(device)
-						# Return a hash with the device name as key and list of states as value
-						{ device => states }
+					devices.map { |device|
+						{ 
+							:id => device, 
+							:services => Celluloid::Actor[:redis].get_states(device)
+						}
 					}
-					
-					# Flatten the list of hashes into a single hash (empty hash if no result}
-					result.inject(:merge) || {}
 				rescue Assets::PathNotFoundError
 					halt 404, "Path not found"
 				end
