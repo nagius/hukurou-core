@@ -98,7 +98,7 @@ module Hukurou
 			# #######################
 
 			# Get a list of faulty services
-			get '/services/faulty' do
+			get '/states/faulty' do
 				services = Hash.new([])
 				
 				Celluloid::Actor[:redis].get_faulty_services().each { |device, service|
@@ -110,7 +110,7 @@ module Hukurou
 			end
 
 			# Get state of a specific device and service
-			get '/state/:device/:service' do 
+			get '/states/:device/:service' do 
 				state = Celluloid::Actor[:redis].get_state(params["device"], params["service"])
 				halt 404, "Device or service not found" if state.nil?
 				
@@ -118,7 +118,7 @@ module Hukurou
 			end
 
 			# Save state for a device's service
-			post '/state/:device/:service' do 
+			post '/states/:device/:service' do 
 				validate!(%w[device service state message])
 
 				Celluloid::Actor[:redis].set_state(params["device"], params["service"], params['state'], params['message'])
@@ -126,7 +126,7 @@ module Hukurou
 			end
 
 			# Acknowledge an alert
-			post '/state/:device/:service/ack' do
+			post '/states/:device/:service/ack' do
 				validate!(%w[device service message user])
 
 				Celluloid::Actor[:redis].ack_state(params["device"], params["service"], params['message'], params['user'])
@@ -138,7 +138,7 @@ module Hukurou
 			# #######################################
 
 			# Get the content of the given directory 
-			get '/dir*' do
+			get '/dir/*' do
 				path = params['splat'][0].split('/').reject(&:empty?)
 
 				begin
@@ -149,7 +149,7 @@ module Hukurou
 			end
 
 			# Get the list of devices in this directory
-			get '/group*' do
+			get '/group/*' do
 				path = params['splat'][0].split('/').reject(&:empty?)
 
 				begin
