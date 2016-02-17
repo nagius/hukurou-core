@@ -37,20 +37,26 @@ module Hukurou
 			end	
 
 			# Get checks definition for the device
-			get '/device/:device/config' do
+			get '/config/:device' do
 				begin
-					Celluloid::Actor[:assets].get_services(params["device"])
+					{ 
+						:id => params["device"],
+						:services => Celluloid::Actor[:assets].get_services(params["device"])
+					}
 				rescue Assets::SubstitutionError => e
 					halt 500, "Configuration error: #{e}"
 				end
 			end
 
 			# Get the device states
-			get '/states/:device' do
+			get '/devices/:device' do
 				device = params["device"]
 
 				if Celluloid::Actor[:redis].device_exists?(device)
-					Celluloid::Actor[:redis].get_states(device)
+					{ 
+						:id => params["device"],
+						:services => Celluloid::Actor[:redis].get_states(device)
+					}
 				else
 					halt 404, "Device not found"
 				end
@@ -111,7 +117,7 @@ module Hukurou
 			end
 
 			# Delete a device
-			delete '/device/:device' do 
+			delete '/devices/:device' do 
 				device = params["device"]
 
 				if Celluloid::Actor[:redis].device_exists?(device)
@@ -123,7 +129,7 @@ module Hukurou
 			end
 
 			# Register a new device
-			post '/device/:device' do 
+			post '/devices/:device' do 
 				device = params["device"]
 
 				if Celluloid::Actor[:redis].device_exists?(device)
