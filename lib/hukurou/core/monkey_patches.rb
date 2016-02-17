@@ -9,6 +9,16 @@ module Celluloid
 	end
 end
 
+# Enable custom headers
+module Angelo
+	class Base
+		module DSL
+			def headers hdr
+				Responder.default_headers = Responder.default_headers.merge hdr
+			end
+		end
+	end
+end
 
 # Clone of active_support/core_ext/hash/deep_merge.rb
 # But do not override +self+ if +other_value+ is nil
