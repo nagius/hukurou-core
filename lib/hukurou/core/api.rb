@@ -15,14 +15,10 @@ module Hukurou
 	module Core
 		class Router < Angelo::Base
 			content_type :json
-			headers "Access-Control-Allow-Origin" => "*"  # Allow CORS queries
 			report_errors!
 
-			def validate!(keys)	
-				keys.each do |param|
-					halt 400, "Parameter '#{param}' missing." unless params.has_key? param
-				end
-			end
+			# Allow CORS queries
+			headers "Access-Control-Allow-Origin" => "*" 
 
 			# Allow all HTTP verbs for all CORS preflight queries
 			options '*' do
@@ -30,13 +26,20 @@ module Hukurou
 				headers "Access-Control-Allow-Headers" => "Content-Type"
 				halt 200
 			end
-				
-			# List devices 
-			get '/devices' do 
-				Celluloid::Actor[:redis].get_devices()
-			end	
 
-			# Get checks definition for the device
+			# Helpers
+			# #######
+
+			def validate!(keys)	
+				keys.each do |param|
+					halt 400, "Parameter '#{param}' missing." unless params.has_key? param
+				end
+			end
+				
+			# Route to manage devices
+			# #######################
+
+			# Get services configuration for the device
 			get '/config/:device' do
 				begin
 					{ 
@@ -47,6 +50,11 @@ module Hukurou
 					halt 500, "Configuration error: #{e}"
 				end
 			end
+
+			# List devices 
+			get '/devices' do 
+				Celluloid::Actor[:redis].get_devices()
+			end	
 
 			# Get the device states
 			get '/devices/:device' do
@@ -60,60 +68,6 @@ module Hukurou
 				else
 					halt 404, "Device not found"
 				end
-			end
-
-			# Get a list of faulty services
-			get '/services/faulty' do
-				services = Hash.new([])
-				
-				Celluloid::Actor[:redis].get_faulty_services().each { |device, service|
-					# Convert nested Array to Hash with Array 
-					services[device] += [service]
-				}
-
-				services
-			end
-
-			# Get check results for specific device
-			get '/state/:device/:service' do 
-				state = Celluloid::Actor[:redis].get_state(params["device"], params["service"])
-				halt 404, "Device or service not found" if state.nil?
-				
-				state
-			end
-
-			get '/path*' do
-				# Get the path as list of directory
-				path = params['splat'][0].split('/').reject(&:empty?)
-
-				begin
-					Celluloid::Actor[:assets].get_sub_dir(path)
-				rescue Assets::PathNotFoundError
-					halt 404, "Path not found"
-				end
-			end
-
-			get '/group*' do
-				# Get the path as list of directory
-				path = params['splat'][0].split('/').reject(&:empty?)
-
-				begin
-					devices = Celluloid::Actor[:assets].get_devices_by_path(path)
-					result = devices.map { |device|
-						states = Celluloid::Actor[:redis].get_states(device)
-						# Return a hash with the device name as key and list of states as value
-						{ device => states }
-					}
-					
-					# Flatten the list of hashes into a single hash (empty hash if no result}
-					result.inject(:merge) || {}
-				rescue Assets::PathNotFoundError
-					halt 404, "Path not found"
-				end
-			end
-
-			get '/tree' do
-				Celluloid::Actor[:assets].get_directory_tree
 			end
 
 			# Delete a device
@@ -140,6 +94,29 @@ module Hukurou
 				end
 			end
 
+			# Routes to manage states
+			# #######################
+
+			# Get a list of faulty services
+			get '/services/faulty' do
+				services = Hash.new([])
+				
+				Celluloid::Actor[:redis].get_faulty_services().each { |device, service|
+					# Convert nested Array to Hash with Array 
+					services[device] += [service]
+				}
+
+				services
+			end
+
+			# Get state of a specific device and service
+			get '/state/:device/:service' do 
+				state = Celluloid::Actor[:redis].get_state(params["device"], params["service"])
+				halt 404, "Device or service not found" if state.nil?
+				
+				state
+			end
+
 			# Save state for a device's service
 			post '/state/:device/:service' do 
 				validate!(%w[device service state message])
@@ -149,17 +126,58 @@ module Hukurou
 			end
 
 			# Acknowledge an alert
-			post '/state/:device/:service/acknowledge' do
+			post '/state/:device/:service/ack' do
 				validate!(%w[device service message user])
 
 				Celluloid::Actor[:redis].ack_state(params["device"], params["service"], params['message'], params['user'])
 				halt 201, "Alert acknowledged"
 			end
 
+
+			# Routes to manage groups and directories
+			# #######################################
+
+			# Get the content of the given directory 
+			get '/dir*' do
+				path = params['splat'][0].split('/').reject(&:empty?)
+
+				begin
+					Celluloid::Actor[:assets].get_sub_dir(path)
+				rescue Assets::PathNotFoundError
+					halt 404, "Path not found"
+				end
+			end
+
+			# Get the list of devices in this directory
+			get '/group*' do
+				path = params['splat'][0].split('/').reject(&:empty?)
+
+				begin
+					devices = Celluloid::Actor[:assets].get_devices_by_path(path)
+					result = devices.map { |device|
+						states = Celluloid::Actor[:redis].get_states(device)
+						# Return a hash with the device name as key and list of states as value
+						{ device => states }
+					}
+					
+					# Flatten the list of hashes into a single hash (empty hash if no result}
+					result.inject(:merge) || {}
+				rescue Assets::PathNotFoundError
+					halt 404, "Path not found"
+				end
+			end
+
+			# Get the tree of the directory structure
+			get '/tree' do
+				Celluloid::Actor[:assets].get_directory_tree
+			end
+
+			# Routes to manage mutes
+			# ######################
+			
 			# Create a new maintenance
 			post '/mutes' do
 				validate!(%w[devices services start end message user])
-				# TODO: expand device and service list here or in GUI ?
 				
 				# Validate params that need to be arrays
 				%w[devices services].each { |param|
@@ -224,4 +242,5 @@ module Hukurou
 		end
 	end
 end
+
 # vim: ts=4:sw=4:ai:noet
