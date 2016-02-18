@@ -179,7 +179,11 @@ module Hukurou
 							state = Database::State::CRIT
 					end
 
-					Celluloid::Actor[:redis].set_state(device, service, state, output)
+					if Thread.main[:shutdown]
+						warn "[WORKERS] Shutdown in progress, #{device}:#{service} update cancelled."
+					else
+						Celluloid::Actor[:redis].set_state(device, service, state, output)
+					end
 				rescue StandardError => e
 					# Select the good error message
 					message = case e
@@ -193,7 +197,9 @@ module Hukurou
 					Celluloid::Actor[:redis].set_state(device, service, Database::State::CRIT, message)
 				end
 			rescue DeadActorError
-				warn "[WORKERS] Redis actor is dead. Are we shutting down ?"
+				if not Thread.main[:shutdown]
+					warn "[WORKERS] Redis actor is dead."
+				end
 			end
 		end
 	end

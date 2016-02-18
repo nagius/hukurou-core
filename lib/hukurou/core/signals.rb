@@ -8,6 +8,8 @@ module Hukurou
 
 			def initialize()
 				@queue = []
+				Thread.main[:shutdown] = false
+
 				async.setup
 			end
 
@@ -19,13 +21,21 @@ module Hukurou
 						when :HUP
 							Celluloid::Actor[:assets].reload()
 							Celluloid::Actor[:workers].restart_all_workers()
+						when :INT, :TERM
+							Thread.main[:shutdown] = true
+
+							info "[SIGNALS] Shutting down application. Please wait..."
+							Celluloid.shutdown_timeout = 5
+							Celluloid.shutdown
 					end
 				end	
 
 				def setup()
 
-					trap(:HUP) do
-						@queue << :HUP
+					[:HUP, :INT, :TERM].each do |sig|
+						trap(sig) do
+							@queue << sig
+						end
 					end
 
 					every(1) {

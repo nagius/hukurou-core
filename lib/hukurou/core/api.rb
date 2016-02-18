@@ -217,7 +217,7 @@ module Hukurou
 
 			def shutdown
 				info "[API] Stopping web server."
-				@server.async.shutdown
+				@server.shutdown
 			rescue StandardError => e
 				debug "[API] Finalizer crashed: #{e}"
 			end
