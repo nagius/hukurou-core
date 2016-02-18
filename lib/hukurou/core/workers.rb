@@ -90,7 +90,7 @@ module Hukurou
 			def stop_workers(device)
 				if @workers.include?(device)
 					info "[WORKERS] Stopping workers for device #{device}..."
-					# TODO: kill running checks
+				
 					@workers[device].each { |worker|
 						worker.cancel()
 					}
@@ -181,6 +181,8 @@ module Hukurou
 
 					if Thread.main[:shutdown]
 						warn "[WORKERS] Shutdown in progress, #{device}:#{service} update cancelled."
+					elsif not Celluloid::Actor[:workers].device_registered?(device)
+						warn "[WORKERS] Device #{device} not registered, #{service} update cancelled."
 					else
 						Celluloid::Actor[:redis].set_state(device, service, state, output)
 					end
