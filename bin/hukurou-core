@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+
+# Hukurou - Another monitoring tool, the modern way.
+# Copyleft 2015 - Nicolas AGIUS <nicolas.agius@lps-it.fr>
+#
+################################################################################
+#
+# This file is part of Hukurou.
+#
+# Hukurou is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+################################################################################
+
+unless $:.include?(File.dirname(__FILE__) + "/../lib/")
+	$: << File.dirname(__FILE__) + "/../lib"
+end
+
+require 'hukurou/core'
+
+Hukurou::Core::Config.load()
+
+class Supervisor <  Celluloid::Supervision::Container
+	supervise type: Hukurou::Core::Database,	as: :redis
+	supervise type: Hukurou::Core::Assets, 		as: :assets
+	supervise type: Hukurou::Core::Workers,		as: :workers
+	supervise type: Hukurou::Core::Network, 	as: :net
+	supervise type: Hukurou::Core::API,	 		as: :api
+	supervise type: Hukurou::Core::Signals,		as: :signals
+end
+
+# Start main loop
+Celluloid.logger.info "[CORE] Starting application..."
+Supervisor.run
+
+# vim: ts=4:sw=4:ai:noet

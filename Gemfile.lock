@@ -1,0 +1,93 @@
+GIT
+  remote: git://github.com/nagius/angelo.git
+  revision: 08785dc807a4dc59c16d8c10af96d285b92ae104
+  specs:
+    angelo (0.5.0pre)
+      mime-types (~> 2.4)
+      mustermann (~> 0.4)
+      reel (~> 0.5)
+      tilt (~> 2.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    activesupport (4.2.4)
+      i18n (~> 0.7)
+      json (~> 1.7, >= 1.7.7)
+      minitest (~> 5.1)
+      thread_safe (~> 0.3, >= 0.3.4)
+      tzinfo (~> 1.1)
+    addressable (2.3.8)
+    celluloid (0.17.2)
+      celluloid-essentials
+      celluloid-extras
+      celluloid-fsm
+      celluloid-pool
+      celluloid-supervision
+      timers (>= 4.1.1)
+    celluloid-essentials (0.20.5)
+      timers (>= 4.1.1)
+    celluloid-extras (0.20.5)
+      timers (>= 4.1.1)
+    celluloid-fsm (0.20.5)
+      timers (>= 4.1.1)
+    celluloid-io (0.17.2)
+      celluloid (>= 0.17.2)
+      nio4r (>= 1.1)
+      timers (>= 4.1.1)
+    celluloid-pool (0.20.5)
+      timers (>= 4.1.1)
+    celluloid-supervision (0.20.5)
+      timers (>= 4.1.1)
+    domain_name (0.5.25)
+      unf (>= 0.0.5, < 1.0.0)
+    hitimes (1.2.3)
+    http (0.9.8)
+      addressable (~> 2.3)
+      http-cookie (~> 1.0)
+      http-form_data (~> 1.0.1)
+      http_parser.rb (~> 0.6.0)
+    http-cookie (1.0.2)
+      domain_name (~> 0.5)
+    http-form_data (1.0.1)
+    http_parser.rb (0.6.0)
+    i18n (0.7.0)
+    json (1.8.3)
+    mime-types (2.99)
+    minitest (5.8.2)
+    mustermann (0.4.0)
+      tool (~> 0.2)
+    nio4r (1.1.1)
+    redis (3.2.2)
+    reel (0.5.0)
+      celluloid (>= 0.15.1)
+      celluloid-io (>= 0.15.0)
+      http (>= 0.6.0.pre)
+      http_parser.rb (>= 0.6.0)
+      websocket_parser (>= 0.1.6)
+    thread_safe (0.3.5)
+    tilt (2.0.1)
+    timers (4.1.1)
+      hitimes
+    tool (0.2.3)
+    tree (0.2.1)
+    tzinfo (1.2.2)
+      thread_safe (~> 0.1)
+    unf (0.1.4)
+      unf_ext
+    unf_ext (0.0.7.1)
+    websocket_parser (1.0.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  activesupport
+  angelo!
+  celluloid
+  celluloid-io
+  redis
+  tree
+
+BUNDLED WITH
+   1.10.6

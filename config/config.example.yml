@@ -1,0 +1,21 @@
+---
+:api:
+    :port: 9292
+    :listen: "0.0.0.0"
+
+:core:
+    :listen: "0.0.0.0"
+    :port: 6666
+    :pool_size: 20
+
+:redis:
+    :host: "10.110.3.202"
+
+:assets: "../../config/assets"
+
+:services: 
+    :definitions: "../../config/services.yml"
+    :max_age: 900
+    :timeout: 30
+
+:secret: "mysupersecret"

@@ -1,0 +1,7 @@
+source 'https://rubygems.org'
+gem 'activesupport'
+gem 'tree'
+gem 'celluloid'
+gem 'celluloid-io'
+gem 'redis'
+gem 'angelo', :github => 'nagius/angelo'
