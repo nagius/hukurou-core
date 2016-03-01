@@ -1,21 +1,27 @@
 ---
+# Configuration of the REST API, TCP connection
 :api:
-    :port: 9292
     :listen: "0.0.0.0"
+    :port: 1664
 
+# Configuration for the internal communication, UDP connection
 :core:
     :listen: "0.0.0.0"
-    :port: 6666
-    :pool_size: 20
+    :port: 1664
+    :pool_size: 20      # Maximum of simultaneous workers to run checks by the Core
 
+# Specify Redis host
 :redis:
-    :host: "10.110.3.202"
+    :host: "127.0.0.1"
 
-:assets: "../../config/assets"
+# Path of assets definitions direcory
+:assets: "/etc/hukurou/assets"
 
+# Configuration of global services
 :services: 
-    :definitions: "../../config/services.yml"
+    :definitions: "/etc/hukurou/core/services.yml"
     :max_age: 900
     :timeout: 30
 
+# Shared secret between Core instances
 :secret: "mysupersecret"

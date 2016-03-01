@@ -33,7 +33,7 @@ module Hukurou
 
 			def initialize
 				# Default configuration file
-				@config_file = "/etc/hukurou/config.yml"
+				@config_file = "/etc/hukurou/core/config.yml"
 
 				# Default configuration
 				@config = {
@@ -50,7 +50,7 @@ module Hukurou
 						:host => "127.0.0.1"
 					},
 					:services => {
-						:definitions => "/etc/hukurou/services.yml",
+						:definitions => "/etc/hukurou/core/services.yml",
 						:timeout => 30,  	# 30 seconds
 						:max_age => 900		# 15 minutes	
 					},
