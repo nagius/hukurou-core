@@ -69,11 +69,11 @@ module Hukurou
 			end
 
 			def initialize()
-				async.run
+				async.setup
 			end
 
 			# Second-step initialize of Celluloid actor
-			def run()
+			def setup
 				@redis = Redis.new(Config[:redis])
 
 				# Check mimium version (needed for *scan features)

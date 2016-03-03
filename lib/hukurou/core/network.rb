@@ -50,7 +50,7 @@ module Hukurou
 				debug "[NET] Finalizer crashed: #{e}"
 			end
 
-			# Second-step initalize of Celluloid actor
+			# Start listening to the socket
 			def listen()
 				while @socket
 					data, (_, port, _, ip) = @socket.recvfrom(1400) # TODO: check if good number

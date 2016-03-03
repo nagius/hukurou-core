@@ -34,11 +34,11 @@ module Hukurou
 				@localhost = Socket.gethostname
 				@nodes = Hash.new				# Hash of node containing list of device managed by the node
 				@workers = Hash.new				# Hash of device containing list of Timer for each check
-				async.run
+				async.setup
 			end
 
 			# Second-step initialize Celluloid actor
-			def run
+			def setup
 				@watchdog = every(60) { 
 					# Check for stale states every minutes
 					async.check_stales()
@@ -47,6 +47,7 @@ module Hukurou
 			end
 
 			def shutdown()
+				@watchdog.cancel unless @watchdog.nil?
 				stop_all_workers
 			rescue StandardError => e
 				debug "[WORKERS] Finalizer crashed: #{e}"
