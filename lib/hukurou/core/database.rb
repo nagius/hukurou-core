@@ -21,7 +21,6 @@
 ################################################################################
 
 # TODO: document datamodel
-# TODO: YARD documentation
 
 require "redis"
 require "json"
@@ -42,6 +41,7 @@ module Hukurou
 				ACKED = "ACKED"		# They are not in DB
 			end
 
+			# Object used to listen to the 'events' channel of Redis
 			class Listener
 				include Celluloid
 				include Celluloid::Internals::Logger
@@ -72,6 +72,7 @@ module Hukurou
 				async.run
 			end
 
+			# Second-step initialize of Celluloid actor
 			def run()
 				@redis = Redis.new(Config[:redis])
 
@@ -93,9 +94,12 @@ module Hukurou
 				debug "[REDIS] Finalizer crashed: #{e}"
 			end
 
+			# Save a new state
+			#
+			# @param device [String] Device name
+			# @param service [String, Symbol] Service name
+			# @param state [String] State value, must be a member of State class
 			def set_state(device, service, state, message)
-				# NOTE: service can be a symbol
-
 				debug "[REDIS] Saving state #{[device, service, state, message]}"
 
 				now = Time.now.to_i
@@ -147,6 +151,10 @@ module Hukurou
 				retry
 			end
 
+			# Report a service as stale
+			#
+			# @param device [String] Device name
+			# @param service [String] Service name
 			def set_stale_state(device, service)
 				key_state = "state:#{device}:#{service}"
 
@@ -159,12 +167,21 @@ module Hukurou
 				end
 			end
 
+			# Get the list of stale services
+			#
+			# @param age [Integer] Seconds
+			# @return [Array<Array<String, String>>] List of tuple (device, service)
 			def get_stale_services(age)
 				@redis.zrangebyscore("last_seens", 0, (Time.now.to_i - age)).map { |key|
 					key.split(":")
 				}
 			end
 
+			# Get the state of a service
+			#
+			# @param device [String] Device name
+			# @param service [String] Service name
+			# @return [Hash]
 			def get_state(device, service)
 				key_state = "state:#{device}:#{service}"
 
@@ -192,6 +209,9 @@ module Hukurou
 				end
 			end
 
+			# Return a list of all known services per devices
+			#
+			# @return [Array<Array<String, String>>] List of tuple (device, service)
 			def get_all_services()
 				@redis.scan_each(:match => "state:*").map { |key_state|
 					(_, device, service) = key_state.split(":")
@@ -199,6 +219,10 @@ module Hukurou
 				}
 			end
 
+			# Get all states of a device
+			#
+			# @param device [String] Device name
+			# @return [Array<Hash>]
 			def get_states(device)
 				@redis.scan_each(:match => "state:#{device}:*").map { |key|
 					service = key.split(":")[2]
@@ -206,6 +230,9 @@ module Hukurou
 				}.inject(:merge)
 			end
 
+			# Return the list of faulty services per devices
+			#
+			# @return [Array<Array<String, String>>] List of tuple (device, service)
 			def get_faulty_services()
 				@redis.sscan_each("faulty_states").map { |key_state|
 					(_, device, service) = key_state.split(":")
@@ -213,14 +240,24 @@ module Hukurou
 				}
 			end
 
+			# Return the list of all devices
+			#
+			# @return [Array<String>]
 			def get_devices()
 				@redis.smembers("devices")
 			end
 
+			# Tell if the device is in database
+			#
+			# @param device [String] Device name
+			# @return [Boolean]
 			def device_exists?(device)
 				@redis.sismember("devices", device)
 			end
 
+			# Add a new device in database and trigger associated events
+			#
+			# @param device [String] Device name
 			def add_device(device)
 				if not Celluloid::Actor[:workers].device_registered?(device)
 					info "[REDIS] New device: #{device}"
@@ -229,6 +266,9 @@ module Hukurou
 				end
 			end
 
+			# Delete a device form database and trigger associated events
+			#
+			# @param device [String] Device name
 			def delete_device(device)
 				info "[REDIS] Delete device: #{device}"
 
@@ -251,11 +291,22 @@ module Hukurou
 				@redis.publish(:events, {:event => "device_deleted", :device => device}.to_json)
 			end
 
+			# Delete one service of a device but keep the device
+			#
+			# @param device [String] Device name
+			# @param service [String] Service name
 			def delete_state(device, service)
 				info "[REDIS] Delete state: #{device}:#{service}"
 				delete_state_by_key("state:#{device}:#{service}")
 			end
-
+		
+			# Acknowledge a faulty service
+			#
+			# @param device [String] Device name
+			# @param service [String] Service name
+			# @param message [String] Reason
+			# @param user [String] Username of the author
+			# @return [Integer] Id of the acknowledgment
 			def ack_state(device, service, message, user)
 				key_state = "state:#{device}:#{service}"
 
@@ -282,12 +333,17 @@ module Hukurou
 				end
 			end
 
+			# Create a maintenance mode for a group of devices and services
+			#
+			# @param devices [Array<String>] List of devices
+			# @param services [Array<String>] List of services
+			# @param message [String] Reason
+			# @param user [String] Username of the author
+			# @param starts_at [Time] 
+			# @param ends_at [Time] 
+			# @return [Integer] Id of the mute
 			def set_mute(devices, services, message, user, starts_at, ends_at)
-				# TODO assets: starts_at and ends_at must be Time object
-				# TODO devices and services must be Array
-
 				info "[REDIS] Added mute: #{devices}:#{services} by #{user} from #{starts_at} to #{ends_at}"
-				# TODO: store exact list or wildcard ??
 
 				id = @redis.incr("next_mute_id")
 				mute = {
@@ -322,6 +378,9 @@ module Hukurou
 				id
 			end
 
+			# Return the list of current mutes
+			#
+			# @return [Array<Hash>]
 			def get_mutes()
 				mutes = []
 				@redis.scan_each(:match => "mute:*:obj") { |key|
@@ -332,6 +391,10 @@ module Hukurou
 				mutes
 			end
 
+			# Return a specific mute
+			#
+			# @param key [Integer, String] Id of the mute
+			# @return [Hash]
 			def get_mute(key)
 				# Convert to key if Id given
 				key = "mute:#{key}:obj" unless key.to_s.include? ":"
@@ -356,6 +419,9 @@ module Hukurou
 				nil
 			end
 
+			# Delete a mute and trigger associated events
+			#
+			# @param id [Integer, String] Id of the mute
 			def delete_mute(id)
 				info "[REDIS] Mute ##{id} deleted"
 
@@ -390,6 +456,9 @@ module Hukurou
 				}
 			end
 
+			# Manage events received from Redis by Listener actor
+			#
+			# @param [Hash]
 			def handle_event(event)
 				data = JSON.parse(event, :symbolize_names => true)
 				debug "[REDIS] Received event #{data}"
@@ -416,6 +485,10 @@ module Hukurou
 
 			private
 
+				# Hande a state change event
+				#
+				# @param key_state [String] Redis key of the state record
+				# @param state [String] State value, must be a member of State class
 				def state_changed(key_state, new_state)
 					(_, device, service) = key_state.split(':')
 
@@ -428,6 +501,9 @@ module Hukurou
 					@redis.lpush("history:#{device}:#{service}", {:state => new_state, :when => Time.now.to_i}.to_json)
 				end
 
+				# Invalidate an acknowledgment
+				#
+				#  @param key_state [String] Redis key of the state record
 				def cancel_ack(key_state)
 					ack_id = @redis.hget(key_state, :ack_id)
 					if not ack_id.nil?
@@ -440,6 +516,9 @@ module Hukurou
 					end
 				end
 
+				# Delete a state record
+				#
+				# @param key_state [String] Redis key of the state record
 				def delete_state_by_key(key_state)
 					# Delete acknowledge
 					ack_id = @redis.hget(key_state, :ack_id)

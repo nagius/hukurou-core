@@ -51,7 +51,7 @@ module Hukurou
 					},
 					:services => {
 						:definitions => "/etc/hukurou/core/services.yml",
-						:timeout => 30,  	# 30 seconds
+						:timeout => 30,		# 30 seconds
 						:max_age => 900		# 15 minutes	
 					},
 					:assets => "/etc/hukurou/assets",
@@ -61,14 +61,21 @@ module Hukurou
 				@mandatory = [:secret]
 			end
 
+			# Instanciate the Config object and parse configuration
 			def self.load
 				instance.load_config
 			end
-
+			
+			# Get a configuration variable
+			#
+			# @param key [Symbol] The configuration key
+			# @return [Hash, String, Interger] The corresponding value
 			def self.[](key)
 				instance.config[key]
 			end
 
+			# Parse command line option and merge with configuration file
+			# This method should not be called directly, use #self.load
 			def load_config
 				# Initialize CLI's option structure
 				options = { :api => {} }

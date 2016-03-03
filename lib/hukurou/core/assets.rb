@@ -37,8 +37,12 @@ module Hukurou
 
 			attr_reader :path
 
+			# Load the Device configuration from the assets tree definition
+			#
+			# @param file [Pathname] Specific YAML configuration file
+			# @param services [Hash] Global services definition
+			# @param default_config [Hash] Services config inherited from parent and merged with local config
 			def initialize(file, services, default_config = {})
-				# TODO: Add assert here file:Pathname, config:hash
 				@name = file.basename.to_s
 				@path = file.dirname.relative_path_from(Pathname.new(Config[:assets])).to_s.split('/') 
 
@@ -103,18 +107,31 @@ module Hukurou
 				end
 			end
 
+			# Tell if the Device name is a regex
+			#
+			# @return [Boolean]
 			def is_regex?()
 				!@regex.nil?
 			end
 
+			# Tell if the specific name match the regex
+			#
+			# @param name [String] Device name
+			# @return [Boolean]
 			def match?(name)
 				@regex ? @regex =~ name : @name == name
 			end
 
+			# Return the DC of this Device (first level in the path)
+			#
+			# @return [String] DC name
 			def get_dc
 				@path[0]
 			end
 			
+			# Return the merged services definition of this Device
+			#
+			# @return [Hash]
 			def get_services()
 				@config[:services]
 			end
@@ -126,6 +143,7 @@ module Hukurou
 
 			attr_reader :tree, :expanded_tree
 
+			# Initialize and load the Assets definition tree
 			def initialize()
 				@default_device=nil
 				@expanded_tree=nil
@@ -133,6 +151,7 @@ module Hukurou
 				async.reload
 			end
 
+			# Load the Assets definition tree
 			def load_assets()
 				begin
 					@services = YAML::load_file(Config[:services][:definitions]).deep_symbolize_keys
@@ -150,6 +169,7 @@ module Hukurou
 				expand_tree(devices)
 			end
 			
+			# Reload the Assets definition tree
 			def reload()
 				info "[ASSETS] Reloading assets..."
 				begin
@@ -159,9 +179,12 @@ module Hukurou
 				end
 			end
 
+			# Create the tree populated with Device object
+			#
+			# @param path [Pathname] Root path of the tree
+			# @param config [Hash] Inherited config from the parent
+			# @return [TreeNode]
 			def create_subtree(path, config = {})
-				# TODO: add assert path:Pathname
-
 				root = Tree::TreeNode.new(path.basename.to_s)
 				files = path.children
 
@@ -197,6 +220,10 @@ module Hukurou
 				return root
 			end
 
+			# Search a Node in the tree by device name
+			#
+			# @param name [String] Device name
+			# @return [TreeNode]
 			def get_node(name)
 				found=[]
 
@@ -217,6 +244,10 @@ module Hukurou
 				return found.first
 			end
 
+			# Get the services definiton for a specific device
+			#
+			# @param name [String] Device name
+			# @return [Hash]
 			def get_services(name)
 				# Duplicate services hash to not modify original device object
 				services = get_device_by_name(name).get_services().deep_dup
@@ -235,14 +266,20 @@ module Hukurou
 				abort SubstitutionError.new(msg)
 			end
 
+			# Search for a specific Device object 
+			#
+			# @param name [String] Device name
+			# @return [Device]
 			def get_device_by_name(name)
 				node = get_node(name)
 				return node.nil? ? @default_device : node.content
 			end
 
+			# Get the list of Devices' names in a specific directory
+			#
+			# @param path [Array<String>] Path as a list of directories
+			# @return [Array<String>]
 			def get_devices_by_path(path)
-				# TODO: assert path:list of string
-				#
 				# TODO: refactor this
 				tree = @expanded_tree
 				abort PathNotFoundError.new if tree.nil?
@@ -257,9 +294,11 @@ module Hukurou
 				tree.children.select { |node| node.content }.map(&:name)
 			end
 
+			# Get the content of a directory
+			#
+			# @param path [Array<String>] Path as a list of directories
+			# @return [Array<Hash>] List of child elements
 			def get_sub_dir(path)
-				# TODO: assert path:list of string
-
 				# TODO: refactor this
 				tree = @expanded_tree
 
@@ -275,7 +314,9 @@ module Hukurou
 				}
 			end
 
-			# Get the directory structure as a nested list of hash
+			# Dump the directory structure as a nested list of hash
+			#
+			# @return [Array<Hash>]
 			def get_directory_tree()
 				def to_list_of_hash(children)
 					dir = []
@@ -292,10 +333,10 @@ module Hukurou
 			end
 
 			# Replace config entities by list of running devices
+			#
+			# @param devices [Array<String>] List of devices' name
 			def expand_tree(devices)
 				debug "[ASSETS] Expanding device tree"
-
-				# TODO: assert devices:list of string
 				
 				# Duplicate the tree structure without devices (only directory)
 				# TODO: optimize this
@@ -310,9 +351,9 @@ module Hukurou
 			end
 
 			# Add a new running device to the expanded tree
+			#
+			# @param device [String] Device name
 			def add_device(device)
-				# TODO: assert device:String
-
 				node = @expanded_tree
 
 				get_device_by_name(device).path.each { |dir|
@@ -325,6 +366,8 @@ module Hukurou
 			end
 
 			# Remove a dead device from the expanded tree
+			#
+			# @param device [String] Device name
 			def delete_device(device)
 				@expanded_tree.each { |node|
 					if node.name == device

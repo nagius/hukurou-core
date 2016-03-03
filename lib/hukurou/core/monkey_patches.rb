@@ -1,5 +1,6 @@
 
 # https://github.com/celluloid/celluloid-io/issues/161
+# TODO: remove. Has been pushed upstream
 module Celluloid
 	module IO
 		class UDPSocket
@@ -10,6 +11,7 @@ module Celluloid
 end
 
 # Enable custom headers
+# TODO: remove. Has been pushed upstream
 module Angelo
 	class Base
 		module DSL

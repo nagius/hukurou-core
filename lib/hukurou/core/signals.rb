@@ -35,6 +35,9 @@ module Hukurou
 
 			private
 
+				# Manage a received signal
+				#
+				# @param sig [Symbol] Signal received
 				def handle(sig)
 					info "[SIGNALS] Signal #{sig} received."
 					case sig
@@ -50,6 +53,7 @@ module Hukurou
 					end
 				end	
 
+				# Second-step initialize Celluloid actor
 				def setup()
 
 					[:HUP, :INT, :TERM].each do |sig|

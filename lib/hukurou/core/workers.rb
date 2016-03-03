@@ -37,12 +37,13 @@ module Hukurou
 				async.run
 			end
 
+			# Second-step initialize Celluloid actor
 			def run
 				@watchdog = every(60) { 
 					# Check for stale states every minutes
 					async.check_stales()
 				}
-				@pool = Worker.pool(size: Config[:core][:pool_size]) 	# Pool of thread to execute checks
+				@pool = Worker.pool(size: Config[:core][:pool_size])	# Pool of thread to execute checks
 			end
 
 			def shutdown()
@@ -51,16 +52,25 @@ module Hukurou
 				debug "[WORKERS] Finalizer crashed: #{e}"
 			end
 
+			# Return the node managing this device
+			#
+			# @param device [String] Device name
+			# @return [String] Node name
 			def dispatch(device)
 				# TODO: optimize by keeping sorted list and length as instance variable
 				nodes=@nodes.keys.sort
 				nodes[device.sum % nodes.length]
 			end
 
+			# Tell if the device is managed by the local node
+			#
+			# @param [String] Device name
+			# @return [Boolean]
 			def is_local?(device)
 				dispatch(device) == @localhost
 			end
 
+			# Check if some service are stale and update database
 			def check_stales()
 				debug "[WORKERS] Checking stale states"
 
@@ -72,10 +82,18 @@ module Hukurou
 				}
 			end
 
+			# Tell if a device is managed by any node
+			#
+			# @param [String] Device name
+			# @return [Boolean]
 			def device_registered?(device)
 				@nodes.values.flatten.include?(device)
 			end
 
+			# Redefine which node is in charge of which device
+			# Used to rebalance the cluster when a node is leaving or joining
+			#
+			# @param nodes [Array<String>] List of nodes
 			def rebalance(nodes)
 				# TODO: check if assets has been loaded
 				info "[WORKERS] Rebalance cluster with #{nodes}"
@@ -92,6 +110,9 @@ module Hukurou
 				rebalance_workers()
 			end
 
+			# Start periodic checks for all services of this device
+			#
+			# @param device [String] Device name
 			def start_workers(device)
 				info "[WORKERS] Starting workers for device #{device}..."
 				@workers[device]=Array.new
@@ -108,6 +129,9 @@ module Hukurou
 				error "[WORKERS] Failed to start workers: #{e}"
 			end
 
+			# Suspend periodic checks for all services of this device
+			#
+			# @param device [String] Device name
 			def stop_workers(device)
 				if @workers.include?(device)
 					info "[WORKERS] Stopping workers for device #{device}..."
@@ -119,12 +143,15 @@ module Hukurou
 				end
 			end
 
+			# Suspend all periodic checks managed by the local node
 			def stop_all_workers()
 				@workers.keys.each { |device|
 					stop_workers(device)
 				}
 			end
 
+			# Restart all periodic checks managed by the local node
+			# Used after a change in services's definitions
 			def restart_all_workers()
 				@workers.keys.each { |device|
 					stop_workers(device)
@@ -132,16 +159,25 @@ module Hukurou
 				}
 			end
 
+			# Return the list of devices managed by the local node
+			#
+			# @return [Array<Strinq>] List of devices
 			def get_local_devices()
 				@nodes[@localhost] || []
 			end
 
+			# Remove a device from the managed list and stop associated workers
+			#
+			# @param [String] Device name
 			def delete_device(device)
 				target = dispatch(device)
 				stop_workers(device) if target == @localhost
 				@nodes[target].delete(device)
 			end
 
+			# Add a device to the managed list and start associated workers
+			#
+			# @param [String] Device name
 			def add_device(device)
 				target = dispatch(device)
 
@@ -152,6 +188,7 @@ module Hukurou
 				start_workers(device) if target == @localhost
 			end
 
+			# Stop workers of removed devices and start workers of added devices
 			def rebalance_workers()
 				devices_added = get_local_devices() - @workers.keys
 				devices_removed = @workers.keys - get_local_devices()
@@ -176,6 +213,11 @@ module Hukurou
 			include Celluloid
 			include Celluloid::Internals::Logger
 				
+			# Execute a check command and save the result in DB
+			#
+			# @param device [String] Device ame
+			# @param service [String] Service name
+			# @param conf [Hash] Configuration of the service's check
 			def run(device, service, conf)
 				debug "[WORKERS] Checking #{service} on #{device} with #{conf}"
 

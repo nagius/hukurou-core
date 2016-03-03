@@ -41,6 +41,9 @@ module Hukurou
 			# Helpers
 			# #######
 
+			# Stop processing if a parameter is missing in the query
+			#
+			# @param keys [Array<String>] List of parameters
 			def validate!(keys)	
 				keys.each do |param|
 					halt 400, { :message => "Parameter #{param} is missing." } unless params.has_key? param

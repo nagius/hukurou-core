@@ -29,6 +29,9 @@ module Hukurou
 			class AbstractMessage
 				attr_reader :src
 
+				# Create a new message
+				#
+				# @param msg [Hash] Message content
 				def initialize(msg=nil)
 					if msg.nil?
 						@src=Socket.gethostname
@@ -42,6 +45,9 @@ module Hukurou
 					end
 				end
 
+				# Get the type of a message
+				#
+				# @return [String] Type name
 				def type()
 					TYPE.each_pair do |k,v|
 						if self.instance_of?(v)
@@ -51,6 +57,9 @@ module Hukurou
 					raise ParseError, "Unknown type #{self.class}"
 				end
 
+				# Convert the message data in JSON
+				#
+				# @return [String] JSON document
 				def serialize()
 					{:type => type(), :src => @src, :data => @data}.to_json
 				end
@@ -63,6 +72,9 @@ module Hukurou
 					@data=Config[:secret] if msg.nil?
 				end
 
+				# Tell if the token in the message is valid
+				#
+				# @return [Boolean]
 				def token_ok?
 					@data==Config[:secret]
 				end
@@ -72,10 +84,16 @@ module Hukurou
 			end
 
 			class Granted < AbstractMessage
+				# Return the list of cluster nodes actually running
+				#
+				# @return [Array<String>]
 				def members
 					@data
 				end
 
+				# Set the list of cluster nodes
+				#
+				# @param members [Array<String>] List of node name
 				def set_members(members)
 					@data=members
 					return self
@@ -114,6 +132,10 @@ module Hukurou
 			}
 
 			# Parse UDP data and return the corresponding Message subclass
+			#
+			# @param raw [String] JSON data
+			# @param ip [String] Source IP
+			# @return [AbstractMessage]
 			def Message.get(raw, ip)
 				begin
 					data=JSON.parse(raw)

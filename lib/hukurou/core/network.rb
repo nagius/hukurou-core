@@ -50,6 +50,7 @@ module Hukurou
 				debug "[NET] Finalizer crashed: #{e}"
 			end
 
+			# Second-step initalize of Celluloid actor
 			def listen()
 				while @socket
 					data, (_, port, _, ip) = @socket.recvfrom(1400) # TODO: check if good number
@@ -60,6 +61,11 @@ module Hukurou
 				error "[NET] Socket error: #{e}"
 			end
 
+			# Handle an incomming message
+			#
+			# @param data [String] Raw data
+			# @param ip [String] Source IP
+			# @param port [String] Source port
 			def process_data(data, ip, port)
 				# Parse received message
 				begin
@@ -136,6 +142,7 @@ module Hukurou
 				@timer_wd.cancel unless @timer_wd.nil?
 			end
 
+			# Send a request to join the cluster and start everything if accepted
 			def join_cluster()
 				@members=Hash.new
 				@denied=false
@@ -176,21 +183,34 @@ module Hukurou
 				broadcast(Message::Leave.new)
 			end
 
+			# Return the list of nodes in the cluster
+			#
+			# @return [Array<String>]
 			def get_nodes()
 				@status.keys + [@localhost]
 			end
 
 			private
 
+				# Broadcast a message to others node
+				#
+				# @param msg [AbstractMessage]
 				def broadcast(msg)
-					# TODO assert msg is Message
 					@socket.send(msg.serialize(), 0, '<broadcast>', Config[:core][:port])
 				end
 
+				# Reply to a previously received message
+				#
+				# @param msg [AbstractMessage] Message to send
+				# @param host [String] Destination hostname or IP
+				# @param port [String] Destination port
 				def reply(msg, host, port)
 					@socket.send(msg.serialize(), 0, host, port)
 				end
 
+				# Remove a node from the cluster
+				#
+				# @param node [String] Node name
 				def remove_node(node)
 					@status.delete(node)
 					notify_node_change()
