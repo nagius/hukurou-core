@@ -20,7 +20,90 @@
 #
 ################################################################################
 
-# TODO: document datamodel
+# This module use Redis as database and messaging channel
+#
+# Database
+# ========
+#
+# The folowing key/value are used :
+#
+#	- state:<device>:<service>   [Hashes] Detail of a specific service state
+#
+#		1) "state"			# State tag, must be a member of State class
+#		2) "starts_at"		# Timestamp
+#		3) "last_seen"		# Timestamp
+#		4) "message"		# Explanatory message
+#
+#	- history:<device>:<service>  [Lists] History of a service. Data is a JSON object
+#
+#  		{
+#  			:state => <state_tag>,		# State tag, must be a member of State class
+#  			:when => <time of change>	# Timestamp
+#  		}
+#
+#	- faulty_states   [Sets] List of state keys (state:<device>:<service>) of faulty services
+#
+#	- devices    [Sets] List of monitored devices (hostnames)
+#
+#	- last_seens    [Sorted Sets] List of device+service sorted by last seen timestamp
+#		
+#		score: <timestamp>
+#		value: <device>:<service>
+#
+#	- ack:<id>    [Hashes] Details of a specific acknowledgment
+#
+#		1) "id"				# Id of this Ack
+#		2) "message"		# Explanatory message 
+#		3) "user"			# Username of operator
+#		4) "state"			# State key (state:<device>:<service>) of the associated service
+#		5) "created_at"		# Timestamp
+#
+#	- next_ack_id    [Integer] Next ID used for new acknowledgments
+#
+#	- mute:<id>:obj    [Hashes] Detail of a specific mute (may concern multiple services and devices)
+#
+#		1) "id"				# Id of this mute
+#		2) "devices"		# JSON array of device names
+#		3) "services"		# JSON array of service name
+#		4) "message"		# Explanatory message
+#		5) "user"			# Username of operator
+#		6) "starts_at"		# Timestamp
+#		7) "ends_at"		# Timestamp
+#
+#	- next_mute_id    [Integer] Next ID used for new mutes
+#
+#	- mute:<id>:states    [Sets] List of state key (state:<device>:<service>) impacted by this mute	
+#
+#
+# Messaging
+# =========
+# 
+# The channel 'events' is used to publish notification when one of the folowing 
+# event occurs. The message itself is a JSON hash :
+#
+#  - A device has been added
+#
+#	{
+#		"event": "device_added", 
+#		"device": <device>		// [String] Device name
+#	}
+#
+#  - A device has been removed
+#
+#	{
+#		"event": "device_deleted", 
+#		"device": <device>		// [String] Device name
+#	}
+#
+#  - The state of a service has changed
+#
+#	{
+#		"event: "state_change", 
+#		"device: <device>, 		// [String] Device name
+#		"service: <service>, 	// [String] Service name
+#		"state: <new_state> 	// [String] State tag, must be a member of State class
+#	}
+#
 
 require "redis"
 require "json"
