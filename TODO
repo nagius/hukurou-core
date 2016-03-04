@@ -1,0 +1,15 @@
+
+ - Add support of events :
+
+log:
+        type: "event"
+        type: "state"
+        trashable: true
+        event: true         # <======
+        msg: "No logs entries"
+
+ - Find a way to kill checks when shutting down
+
+ - Cleanup shutdown process
+
+
